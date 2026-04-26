@@ -463,7 +463,7 @@ class CalibrationWindow(QtWidgets.QMainWindow):
         self.showFullScreen()
 
         self._camera = Camera().start()
-        self._tracker = GazeTracker()
+        self._tracker: GazeTracker | None = None
         self._hands: HandTracker | None = None
         self._profile = get_or_create_profile(self.user_id)
         self._gaze_rms: float | None = None
@@ -482,6 +482,16 @@ class CalibrationWindow(QtWidgets.QMainWindow):
             self._start_aim()
 
     def _start_aim(self) -> None:
+        try:
+            self._tracker = GazeTracker()
+        except Exception as exc:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Calibración",
+                "No se pudo iniciar el tracker de mirada:\n" + str(exc) +
+                "\n\nEjecuta FreeHands.bat doctor para reparar/ver dependencias.",
+            )
+            self.close(); return
         self.aim = AimTrainer(self._camera, self._tracker)
         self.aim.finished.connect(self._after_aim)
         self._stack.addWidget(self.aim)
@@ -583,7 +593,8 @@ class CalibrationWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):  # noqa: N802
         try:
             self._camera.stop()
-            self._tracker.close()
+            if self._tracker is not None:
+                self._tracker.close()
             if self._hands is not None:
                 self._hands.close()
         except Exception:

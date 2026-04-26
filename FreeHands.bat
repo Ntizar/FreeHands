@@ -50,10 +50,10 @@ if not exist ".venv\Scripts\python.exe" (
 
 call ".venv\Scripts\activate.bat"
 
-REM -- Instalar dependencias si freehands no esta importable -------------
-python -c "import freehands" 2>nul
+REM -- Instalar dependencias si falta cualquier modulo core --------------
+python -c "import freehands, cv2, mediapipe, numpy, sklearn, PyQt6, pydantic, platformdirs" 2>nul
 if errorlevel 1 (
-    echo [FreeHands] Instalando dependencias ^(primera vez, puede tardar varios minutos^)...
+    echo [FreeHands] Instalando o reparando dependencias ^(puede tardar varios minutos^)...
     python -m pip install --upgrade pip
     python -m pip install -r requirements.txt
     if errorlevel 1 (
@@ -67,6 +67,16 @@ if errorlevel 1 (
         echo [FreeHands] ERROR instalando el paquete freehands en modo editable.
         pause & exit /b 1
     )
+)
+
+REM -- Comprobacion final de dependencias core --------------------------
+python -c "import cv2, mediapipe, numpy, sklearn, PyQt6, pydantic, platformdirs" 2>nul
+if errorlevel 1 (
+    echo.
+    echo [FreeHands] ERROR: faltan dependencias core dentro de .venv.
+    echo            Mira el log o ejecuta: FreeHands.bat doctor
+    echo            Si mediapipe falla, instala Python 3.11 y borra la carpeta .venv.
+    pause & exit /b 1
 )
 
 REM -- Menu interactivo si no hay comando -------------------------------

@@ -70,12 +70,17 @@ Sólo hay un launcher: **[FreeHands.bat](FreeHands.bat)**.
 ```
 FreeHands.bat                       (menú interactivo)
 FreeHands.bat run                   (arranca el sistema, usuario por defecto: Ntizar)
-FreeHands.bat calibrate             (mirada + ronda de gestos)
+FreeHands.bat calibrate             (mirada + gestos)
+FreeHands.bat gaze                  (recalibra sólo mirada)
+FreeHands.bat gestures              (recalibra sólo gestos, conserva la mirada)
+FreeHands.bat doctor                (diagnóstico de cámara/micro/dependencias)
 FreeHands.bat run otro_usuario      (otro perfil)
 ```
 
 Crea el `.venv`, instala dependencias la primera vez y, si el usuario no tiene
 perfil, abre la calibración automáticamente.
+El launcher deja siempre un log en `logs/FreeHands-last.log`; si algo se abre en blanco
+y se cierra, mira ese archivo o ejecuta `FreeHands.bat doctor`.
 
 ### Manual (cualquier SO)
 
@@ -87,6 +92,8 @@ python -m venv .venv
 pip install -r requirements.txt
 
 python -m freehands calibrate --user Ntizar
+python -m freehands calibrate-gaze --user Ntizar
+python -m freehands calibrate-gestures --user Ntizar
 python -m freehands run --user Ntizar
 ```
 
@@ -145,9 +152,13 @@ Por defecto FreeHands usa `faster_whisper` porque es más ligero para comandos c
 Inspirado en `aim_botz` de Counter-Strike. Cuatro fases:
 
 1. **Calibración de mirada** — 9-13 puntos, 3 muestras cada uno → entrena un modelo de **ridge regression** personalizado.
-2. **Ronda de gestos** — `thumb_up`, `thumb_down`, `pinch_close`, `fist_pause`; ajusta umbrales por perfil.
+2. **Ronda de gestos** — `thumb_up`, `thumb_down`, `pinch_close`, `fist_pause`; muestra preview de cámara + landmarks y ajusta umbrales por perfil.
 3. **Voz local** — comandos en español con wake word (`FreeHands` / `Ntizar`) usando faster-whisper.
 4. **Validación final** — tareas reales sin ratón. Si el éxito < 80 %, sugiere recalibrar.
+
+La mirada y los gestos se pueden recalibrar por separado. El perfil guarda `gaze_calibrated_at`,
+`gesture_calibrated_at` y `gesture_calibration_results`, de modo que no tienes que repetir todo
+si sólo falla una fase.
 
 ---
 

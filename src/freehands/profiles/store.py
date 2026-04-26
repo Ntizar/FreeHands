@@ -33,6 +33,9 @@ class GazeModel(BaseModel):
 class Profile(BaseModel):
     user_id: str
     calibration_date: str = Field(default_factory=lambda: date.today().isoformat())
+    gaze_calibrated_at: str | None = None
+    gesture_calibrated_at: str | None = None
+    gesture_calibration_results: dict[str, dict[str, float | int | bool]] = Field(default_factory=dict)
     gaze_model: GazeModel = Field(default_factory=GazeModel)
     dwell_time_ms: int = DEFAULT_DWELL_MS
     gesture_thresholds: dict[str, GestureThreshold] = Field(

@@ -7,6 +7,19 @@
   "properties": {
     "user_id": { "type": "string" },
     "calibration_date": { "type": "string", "format": "date" },
+    "gaze_calibrated_at": { "type": ["string", "null"] },
+    "gesture_calibrated_at": { "type": ["string", "null"] },
+    "gesture_calibration_results": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "detected": { "type": "boolean" },
+          "median_conf": { "type": "number", "minimum": 0, "maximum": 1 },
+          "frames_to_lock": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
     "gaze_model": {
       "type": "object",
       "properties": {
@@ -41,6 +54,9 @@
     },
     "voice_enabled": { "type": "boolean" },
     "voice_language": { "type": "string" },
+    "voice_asr_backend": { "type": "string" },
+    "voice_tts_backend": { "type": "string" },
+    "voice_wake_words": { "type": "array", "items": { "type": "string" } },
     "magnification_enabled": { "type": "boolean" },
     "magnification_factor": { "type": "number" }
   }

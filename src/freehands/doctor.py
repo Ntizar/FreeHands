@@ -14,40 +14,40 @@ def run_doctor() -> int:
         cap = cv2.VideoCapture(0)
         if cap.isOpened():
             ret, _ = cap.read()
-            print(f"  [✓] Camera 0 reachable (frame={ret})")
+            print(f"  [OK] Camera 0 reachable (frame={ret})")
         else:
-            print("  [✗] Camera 0 not available"); ok = False
+            print("  [ERR] Camera 0 not available"); ok = False
         cap.release()
     except Exception as e:
-        print(f"  [✗] OpenCV error: {e}"); ok = False
+        print(f"  [ERR] OpenCV error: {e}"); ok = False
 
     # MediaPipe
     try:
         import mediapipe  # noqa: F401
-        print("  [✓] MediaPipe importable")
+        print("  [OK] MediaPipe importable")
     except Exception as e:
-        print(f"  [✗] MediaPipe missing: {e}"); ok = False
+        print(f"  [ERR] MediaPipe missing: {e}"); ok = False
 
     # PyQt6
     try:
         from PyQt6 import QtCore  # noqa: F401
-        print("  [✓] PyQt6 importable")
+        print("  [OK] PyQt6 importable")
     except Exception as e:
-        print(f"  [✗] PyQt6 missing: {e}"); ok = False
+        print(f"  [ERR] PyQt6 missing: {e}"); ok = False
 
     # Microphone (optional)
     try:
         import sounddevice as sd
         devs = sd.query_devices()
         ins = [d for d in devs if d.get("max_input_channels", 0) > 0]
-        print(f"  [✓] {len(ins)} input audio device(s) detected")
+        print(f"  [OK] {len(ins)} input audio device(s) detected")
     except Exception as e:
         print(f"  [!] Audio not available: {e}")
 
     # Whisper (optional, Phase 3 voice)
     try:
         import faster_whisper  # noqa: F401
-        print("  [✓] faster-whisper importable")
+        print("  [OK] faster-whisper importable")
     except Exception as e:
         print(f"  [!] faster-whisper not available: {e}")
 

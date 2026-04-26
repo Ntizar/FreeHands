@@ -12,6 +12,12 @@ def main(argv: list[str] | None = None) -> int:
     p_cal = sub.add_parser("calibrate", help="Run the aim-trainer calibration minigame")
     p_cal.add_argument("--user", required=True, help="Profile id (e.g. 'Ntizar')")
 
+    p_cal_gaze = sub.add_parser("calibrate-gaze", help="Recalibrate only gaze for a profile")
+    p_cal_gaze.add_argument("--user", required=True, help="Profile id (e.g. 'Ntizar')")
+
+    p_cal_gestures = sub.add_parser("calibrate-gestures", help="Recalibrate only hand gestures")
+    p_cal_gestures.add_argument("--user", required=True, help="Profile id (e.g. 'Ntizar')")
+
     p_run = sub.add_parser("run", help="Start the multimodal control system")
     p_run.add_argument("--user", required=True, help="Profile id to load")
     p_run.add_argument("--no-voice", action="store_true", help="Disable voice listener")
@@ -23,6 +29,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "calibrate":
         from .ui.calibration_game import run_calibration
         return run_calibration(user_id=args.user)
+    if args.cmd == "calibrate-gaze":
+        from .ui.calibration_game import run_gaze_calibration
+        return run_gaze_calibration(user_id=args.user)
+    if args.cmd == "calibrate-gestures":
+        from .ui.calibration_game import run_gesture_calibration
+        return run_gesture_calibration(user_id=args.user)
     if args.cmd == "run":
         from .main import run_system
         return run_system(user_id=args.user, voice_enabled=not args.no_voice)

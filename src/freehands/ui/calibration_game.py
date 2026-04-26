@@ -20,6 +20,8 @@ from __future__ import annotations
 import random
 import sys
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -32,11 +34,14 @@ from ..profiles import GestureThreshold, get_or_create_profile, save_profile
 from .theme import GLOBAL_STYLESHEET, PALETTE
 
 
+CalibrationMode = Literal["full", "gaze", "gestures"]
+
+
 # ── Welcome screen ────────────────────────────────────────────────────────
 class WelcomeScreen(QtWidgets.QWidget):
     start_clicked = QtCore.pyqtSignal()
 
-    def __init__(self, user_id: str) -> None:
+    def __init__(self, user_id: str, mode: CalibrationMode = "full") -> None:
         super().__init__()
         self.setObjectName("NtizarPage")
         layout = QtWidgets.QVBoxLayout(self)
@@ -53,17 +58,38 @@ class WelcomeScreen(QtWidgets.QWidget):
         brand.setProperty("class", "NtizarBrand")
         title = QtWidgets.QLabel(f"Hola, {user_id} 👋")
         title.setProperty("class", "NtizarTitle")
-        sub = QtWidgets.QLabel(
-            "Vamos a calibrar tu mirada. Aparecerán puntos en la pantalla:\n"
-            "• Mira fijamente cada punto\n"
-            "• Haz clic encima con el ratón\n"
-            "• Repite ~30-40 veces (3 por posición)\n\n"
-            "Mantén la cabeza relativamente quieta y la cara bien iluminada."
-        )
+        if mode == "gestures":
+            body = (
+                "Vamos a recalibrar sólo tus gestos de mano. No repetiremos la mirada.\n"
+                "• Verás una preview de cámara en la esquina\n"
+                "• Los puntos verdes muestran que MediaPipe está viendo la mano\n"
+                "• Mantén cada gesto hasta que el anillo llegue al 100%\n\n"
+                "Si un gesto se atasca, pulsa ESC para saltarlo y guardar umbrales más suaves."
+            )
+            button_text = "Calibrar gestos"
+        elif mode == "gaze":
+            body = (
+                "Vamos a recalibrar sólo tu mirada. No repetiremos gestos.\n"
+                "• Mira fijamente cada punto\n"
+                "• Haz clic encima con el ratón\n"
+                "• Repite ~30-40 veces (3 por posición)\n\n"
+                "Mantén la cabeza relativamente quieta y la cara bien iluminada."
+            )
+            button_text = "Calibrar mirada"
+        else:
+            body = (
+                "Vamos a calibrar mirada y gestos.\n"
+                "• Primero: mira cada punto naranja y haz clic\n"
+                "• Después: mantén cada gesto frente a la cámara\n\n"
+                "La mirada se guarda antes de empezar los gestos, así que no se pierde si algo falla."
+            )
+            button_text = "Empezar calibración"
+
+        sub = QtWidgets.QLabel(body)
         sub.setProperty("class", "NtizarSubtitle")
         sub.setWordWrap(True)
 
-        start = QtWidgets.QPushButton("Empezar calibración")
+        start = QtWidgets.QPushButton(button_text)
         start.setProperty("class", "NtizarPrimary")
         start.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         start.clicked.connect(self.start_clicked.emit)
@@ -196,6 +222,14 @@ HOLD_CONFIDENCE = 0.65    # minimum sustained confidence
 TIMEOUT_MS = 9000         # per gesture
 TICK_MS = 33              # ~30 fps
 
+HAND_CONNECTIONS = [
+    (0, 1), (1, 2), (2, 3), (3, 4),
+    (0, 5), (5, 6), (6, 7), (7, 8),
+    (5, 9), (9, 10), (10, 11), (11, 12),
+    (9, 13), (13, 14), (14, 15), (15, 16),
+    (13, 17), (0, 17), (17, 18), (18, 19), (19, 20),
+]
+
 
 @dataclass
 class _GestureStat:
@@ -219,6 +253,9 @@ class GestureTrainer(QtWidgets.QWidget):
         self._frames = 0
         self._confs: list[float] = []
         self._last_obs_label = "—"
+        self._last_confidence = 0.0
+        self._last_landmarks: np.ndarray | None = None
+        self._preview_image: np.ndarray | None = None
 
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -273,7 +310,10 @@ class GestureTrainer(QtWidgets.QWidget):
         if frame is None:
             return
         obs = self._hands.detect(frame.image)
+        self._preview_image = frame.image.copy()
+        self._last_landmarks = obs.landmarks
         self._last_obs_label = obs.gesture
+        self._last_confidence = obs.confidence
 
         if obs.gesture == target_id and obs.confidence >= HOLD_CONFIDENCE:
             self._held += 1
@@ -321,6 +361,8 @@ class GestureTrainer(QtWidgets.QWidget):
         p.drawText(QtCore.QRect(0, cy - 100, rect.width(), 30),
                    QtCore.Qt.AlignmentFlag.AlignHCenter, helper)
 
+        self._draw_camera_preview(p, rect)
+
         # Hold ring
         radius = 90
         p.setBrush(QtGui.QColor(255, 255, 255, 180))
@@ -353,6 +395,59 @@ class GestureTrainer(QtWidgets.QWidget):
         p.drawText(QtCore.QRect(0, rect.height() - 60, rect.width(), 30),
                    QtCore.Qt.AlignmentFlag.AlignHCenter, info)
 
+    def _draw_camera_preview(self, p: QtGui.QPainter, rect: QtCore.QRect) -> None:
+        preview_w, preview_h = 320, 240
+        margin = 28
+        box = QtCore.QRect(rect.width() - preview_w - margin, 86, preview_w, preview_h)
+
+        p.setBrush(QtGui.QColor(255, 255, 255, 190))
+        p.setPen(QtGui.QPen(QtGui.QColor(PALETTE.blue), 2))
+        p.drawRoundedRect(box.adjusted(-8, -28, 8, 42), 18, 18)
+
+        p.setPen(QtGui.QColor(PALETTE.text_primary))
+        font = p.font(); font.setPointSize(10); font.setBold(True); p.setFont(font)
+        p.drawText(box.adjusted(0, -24, 0, 0), QtCore.Qt.AlignmentFlag.AlignLeft, "Cámara / mano")
+
+        if self._preview_image is None:
+            p.setBrush(QtGui.QColor(20, 24, 36, 230))
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.drawRoundedRect(box, 12, 12)
+            p.setPen(QtGui.QColor("white"))
+            p.drawText(box, QtCore.Qt.AlignmentFlag.AlignCenter, "Esperando cámara…")
+            return
+
+        rgb = self._preview_image[:, :, ::-1].copy()
+        h, w, _ = rgb.shape
+        image = QtGui.QImage(rgb.data, w, h, rgb.strides[0], QtGui.QImage.Format.Format_RGB888).copy()
+        p.drawImage(box, image)
+
+        if self._last_landmarks is not None:
+            p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            pen = QtGui.QPen(QtGui.QColor(PALETTE.orange), 3)
+            p.setPen(pen)
+            for a, b in HAND_CONNECTIONS:
+                ax = box.left() + int(self._last_landmarks[a, 0] * box.width())
+                ay = box.top() + int(self._last_landmarks[a, 1] * box.height())
+                bx = box.left() + int(self._last_landmarks[b, 0] * box.width())
+                by = box.top() + int(self._last_landmarks[b, 1] * box.height())
+                p.drawLine(ax, ay, bx, by)
+
+            p.setBrush(QtGui.QColor(PALETTE.blue))
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            for x, y, _ in self._last_landmarks:
+                px = box.left() + int(x * box.width())
+                py = box.top() + int(y * box.height())
+                p.drawEllipse(QtCore.QPoint(px, py), 4, 4)
+
+        status = f"{self._last_obs_label} · {self._last_confidence:.2f}"
+        p.setBrush(QtGui.QColor(255, 255, 255, 220))
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        badge = QtCore.QRect(box.left() + 10, box.bottom() + 10, box.width() - 20, 24)
+        p.drawRoundedRect(badge, 12, 12)
+        p.setPen(QtGui.QColor(PALETTE.text_primary))
+        font = p.font(); font.setPointSize(9); font.setBold(False); p.setFont(font)
+        p.drawText(badge, QtCore.Qt.AlignmentFlag.AlignCenter, status)
+
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:  # noqa: N802
         if event.key() == QtCore.Qt.Key.Key_Escape:
             self._record_and_advance(detected=False)
@@ -360,22 +455,31 @@ class GestureTrainer(QtWidgets.QWidget):
 
 # ── Orchestrator ──────────────────────────────────────────────────────────
 class CalibrationWindow(QtWidgets.QMainWindow):
-    def __init__(self, user_id: str) -> None:
+    def __init__(self, user_id: str, mode: CalibrationMode = "full") -> None:
         super().__init__()
         self.user_id = user_id
+        self.mode = mode
         self.setWindowTitle("FreeHands · Calibración")
         self.showFullScreen()
 
         self._camera = Camera().start()
         self._tracker = GazeTracker()
         self._hands: HandTracker | None = None
+        self._profile = get_or_create_profile(self.user_id)
+        self._gaze_rms: float | None = None
 
         self._stack = QtWidgets.QStackedWidget()
         self.setCentralWidget(self._stack)
 
-        self.welcome = WelcomeScreen(user_id)
-        self.welcome.start_clicked.connect(self._start_aim)
+        self.welcome = WelcomeScreen(user_id, mode)
+        self.welcome.start_clicked.connect(self._start_selected_mode)
         self._stack.addWidget(self.welcome)
+
+    def _start_selected_mode(self) -> None:
+        if self.mode == "gestures":
+            self._start_gestures()
+        else:
+            self._start_aim()
 
     def _start_aim(self) -> None:
         self.aim = AimTrainer(self._camera, self._tracker)
@@ -396,18 +500,28 @@ class CalibrationWindow(QtWidgets.QMainWindow):
         pred = np.stack([X @ wx + model.bias_x, X @ wy + model.bias_y], axis=1)
         self._gaze_rms = float(np.sqrt(np.mean(np.sum((pred - y) ** 2, axis=1))))
 
-        self._profile = get_or_create_profile(self.user_id)
         self._profile.gaze_model = model
+        self._profile.gaze_calibrated_at = datetime.now().isoformat(timespec="seconds")
         save_profile(self._profile)
 
-        # Start gesture round
+        if self.mode == "gaze":
+            path = save_profile(self._profile)
+            QtWidgets.QMessageBox.information(
+                self,
+                "Mirada calibrada ✅",
+                f"Perfil guardado en:\n{path}\n\nError RMS: {self._gaze_rms:.0f} px",
+            )
+            self.close(); return
+
+        self._start_gestures()
+
+    def _start_gestures(self) -> None:
         try:
             self._hands = HandTracker()
         except Exception as exc:
             QtWidgets.QMessageBox.information(
                 self, "Calibración",
-                f"Calibración de mirada guardada (RMS {self._gaze_rms:.0f} px).\n\n"
-                f"No se pudo iniciar la ronda de gestos: {exc}",
+                "No se pudo iniciar la ronda de gestos:\n" + str(exc),
             )
             self.close(); return
 
@@ -419,8 +533,14 @@ class CalibrationWindow(QtWidgets.QMainWindow):
     def _finish(self, stats: list[_GestureStat]) -> None:
         # Adapt per-gesture thresholds based on observed performance
         lines: list[str] = []
+        self._profile.gesture_calibration_results = {}
         for stat in stats:
             cur = self._profile.gesture_thresholds.get(stat.gesture, GestureThreshold())
+            self._profile.gesture_calibration_results[stat.gesture] = {
+                "detected": stat.detected,
+                "median_conf": round(stat.median_conf, 3),
+                "frames_to_lock": stat.frames_to_lock,
+            }
             if stat.detected:
                 # Lower the bar slightly toward the user's actual confidence,
                 # but never below 0.55 and never above 0.95.
@@ -444,12 +564,18 @@ class CalibrationWindow(QtWidgets.QMainWindow):
                 lines.append(f"  {stat.gesture}: ⚠ no detectado — relajado a "
                              f"conf≥{target_conf:.2f}, frames≥{target_frames}")
 
+        self._profile.gesture_calibrated_at = datetime.now().isoformat(timespec="seconds")
         path = save_profile(self._profile)
+        gaze_line = (
+            f"Mirada — error RMS: {self._gaze_rms:.0f} px\n"
+            if self._gaze_rms is not None else
+            "Mirada — se conserva la calibración existente.\n"
+        )
         QtWidgets.QMessageBox.information(
             self,
             "Calibración completada ✅",
             "Perfil guardado en:\n" + str(path) +
-            f"\n\nMirada — error RMS: {self._gaze_rms:.0f} px\n"
+            "\n\n" + gaze_line +
             "Gestos:\n" + "\n".join(lines),
         )
         self.close()
@@ -465,9 +591,17 @@ class CalibrationWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
-def run_calibration(user_id: str) -> int:
+def run_calibration(user_id: str, mode: CalibrationMode = "full") -> int:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     app.setStyleSheet(GLOBAL_STYLESHEET)
-    win = CalibrationWindow(user_id)
+    win = CalibrationWindow(user_id, mode=mode)
     win.show()
     return app.exec()
+
+
+def run_gaze_calibration(user_id: str) -> int:
+    return run_calibration(user_id, mode="gaze")
+
+
+def run_gesture_calibration(user_id: str) -> int:
+    return run_calibration(user_id, mode="gestures")

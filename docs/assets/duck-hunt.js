@@ -1,13 +1,13 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js';
-import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+import { FilesetResolver, GestureRecognizer } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
 const $ = (id) => document.getElementById(id);
 
 const TOTAL_DUCKS = 50;
 const PASS_SCORE = 45;
-const HIT_RADIUS = 72;
-const WINK_THRESHOLD = 0.55;
-const OTHER_EYE_MAX = 0.35;
+const HIT_RADIUS = 118;
+const POINTING_CONFIDENCE = 0.50;
+const SHOT_COOLDOWN_MS = 520;
 
 let renderer, scene, camera;
 let ducks = [];
@@ -16,13 +16,50 @@ let score = 0;
 let running = false;
 let gaze = { x: innerWidth / 2, y: innerHeight / 2 };
 let lastShotAt = 0;
-let faceLandmarker = null;
+let gestureRecognizer = null;
 let video = null;
 let gazeActive = false;
-let winkActive = false;
+let gestureActive = false;
+let audioCtx = null;
 
 function setStatus(text) { $('duck-status').textContent = text; }
 function setScore() { $('duck-score').textContent = `${score} / ${TOTAL_DUCKS}`; }
+
+function setGestureLabel(text) {
+  const el = $('duck-gesture');
+  if (el) el.textContent = text;
+}
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+}
+
+function playShot(hit) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(hit ? 135 : 95, now);
+  osc.frequency.exponentialRampToValueAtTime(hit ? 46 : 38, now + 0.12);
+  gain.gain.setValueAtTime(hit ? 0.22 : 0.14, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + 0.17);
+}
+
+function showShot(x, y, hit) {
+  const layer = $('duck-shot-layer');
+  if (!layer) return;
+  const mark = document.createElement('div');
+  mark.className = `duck-shot ${hit ? 'hit' : 'miss'}`;
+  mark.style.left = `${x}px`;
+  mark.style.top = `${y}px`;
+  layer.appendChild(mark);
+  setTimeout(() => mark.remove(), 520);
+}
 
 function updateAim(x, y) {
   gaze.x = x;
@@ -81,7 +118,7 @@ function makeDuck() {
   group.add(eye);
 
   group.userData = {
-    speed: 2.8 + Math.random() * 2.2,
+    speed: 1.8 + Math.random() * 1.8,
     amp: 10 + Math.random() * 16,
     phase: Math.random() * Math.PI * 2,
   };
@@ -101,29 +138,28 @@ function spawnDuck() {
   spawned++;
 }
 
-async function setupCameraAndFace() {
+async function setupCameraAndGestures() {
   video = $('duck-video');
   const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
   video.srcObject = stream;
   await video.play().catch(() => {});
 
   const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-  faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+  const modelAssetPath = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task';
+  gestureRecognizer = await GestureRecognizer.createFromOptions(fileset, {
     baseOptions: {
-      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task',
+      modelAssetPath,
       delegate: 'GPU',
     },
     runningMode: 'VIDEO',
-    numFaces: 1,
-    outputFaceBlendshapes: true,
-  }).catch(async () => FaceLandmarker.createFromOptions(fileset, {
+    numHands: 1,
+  }).catch(async () => GestureRecognizer.createFromOptions(fileset, {
     baseOptions: {
-      modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task',
+      modelAssetPath,
       delegate: 'CPU',
     },
     runningMode: 'VIDEO',
-    numFaces: 1,
-    outputFaceBlendshapes: true,
+    numHands: 1,
   }));
 }
 
@@ -143,19 +179,22 @@ async function setupGaze() {
   try { window.webgazer.showPredictionPoints(false); } catch (_) {}
 }
 
-function maybeWinkShoot(now) {
-  if (!faceLandmarker || !video || video.readyState < 2) return;
-  const out = faceLandmarker.detectForVideo(video, now);
-  const shapes = out.faceBlendshapes && out.faceBlendshapes[0] && out.faceBlendshapes[0].categories;
-  if (!shapes) return;
-  const get = (name) => shapes.find((c) => c.categoryName === name)?.score || 0;
-  const left = get('eyeBlinkLeft');
-  const right = get('eyeBlinkRight');
-  const wink = (left > WINK_THRESHOLD && right < OTHER_EYE_MAX) || (right > WINK_THRESHOLD && left < OTHER_EYE_MAX);
-  if (wink && now - lastShotAt > 650) shoot();
+function maybeGestureShoot(now) {
+  if (!gestureRecognizer || !video || video.readyState < 2) return;
+  const out = gestureRecognizer.recognizeForVideo(video, now);
+  const top = out.gestures && out.gestures[0] && out.gestures[0][0];
+  if (!top) {
+    setGestureLabel('Mano: no detectada');
+    return;
+  }
+  setGestureLabel(`${top.categoryName} · ${(top.score * 100 | 0)}%`);
+  if (top.categoryName === 'Pointing_Up' && top.score >= POINTING_CONFIDENCE) {
+    shoot();
+  }
 }
 
 function shoot() {
+  if (performance.now() - lastShotAt < SHOT_COOLDOWN_MS) return;
   lastShotAt = performance.now();
   let best = null;
   let bestD = Infinity;
@@ -165,7 +204,10 @@ function shoot() {
     const d = Math.hypot(sx - gaze.x, sy - gaze.y);
     if (d < bestD) { bestD = d; best = duck; }
   }
-  if (best && bestD <= HIT_RADIUS) {
+  const hit = !!(best && bestD <= HIT_RADIUS);
+  showShot(gaze.x, gaze.y, hit);
+  playShot(hit);
+  if (hit) {
     score++;
     setScore();
     scene.remove(best);
@@ -204,7 +246,7 @@ function animate(now = 0) {
     }
   }
 
-  maybeWinkShoot(now);
+  maybeGestureShoot(now);
   finishIfNeeded();
   renderer.render(scene, camera);
 }
@@ -216,13 +258,15 @@ async function start() {
   if (!renderer) setupThree();
   score = 0; spawned = 0; ducks.forEach((d) => scene.remove(d)); ducks = [];
   gazeActive = false;
-  winkActive = false;
+  gestureActive = false;
   setScore();
+  ensureAudio();
   try {
-    await setupCameraAndFace();
-    winkActive = true;
+    await setupCameraAndGestures();
+    gestureActive = true;
   } catch (_) {
-    winkActive = false;
+    gestureActive = false;
+    setGestureLabel('Mano: sin camara');
   }
   try {
     await setupGaze();
@@ -231,8 +275,9 @@ async function start() {
     gazeActive = false;
   }
 
-  if (gazeActive && winkActive) setStatus('Mirada + guiño');
+  if (gazeActive && gestureActive) setStatus('Mirada + indice');
   else if (gazeActive) setStatus('Mirada + click');
+  else if (gestureActive) setStatus('Puntero + indice');
   else setStatus('Puntero + click');
 
   running = true;

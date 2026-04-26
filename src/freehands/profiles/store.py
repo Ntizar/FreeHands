@@ -42,6 +42,7 @@ class Profile(BaseModel):
         default_factory=lambda: {
             "thumb_up":    GestureThreshold(),
             "thumb_down":  GestureThreshold(),
+            "pointing_up": GestureThreshold(stability_frames=5, confidence_min=0.75),
             "pinch_open":  GestureThreshold(stability_frames=5, confidence_min=0.90),
             "pinch_close": GestureThreshold(stability_frames=5, confidence_min=0.90),
             "fist_pause":  GestureThreshold(stability_frames=15),
@@ -51,6 +52,7 @@ class Profile(BaseModel):
         default_factory=lambda: {
             "thumb_up":    "click",
             "thumb_down":  "escape",
+            "pointing_up": "click",
             "pinch_open":  "zoom_in",
             "pinch_close": "zoom_out",
             "tongue_out":  "right_click",
@@ -84,7 +86,13 @@ def load_profile(user_id: str) -> Profile:
             f"Profile '{user_id}' not found. Run: freehands calibrate --user {user_id}"
         )
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    return Profile.model_validate(data)
+    profile = Profile.model_validate(data)
+    defaults = Profile(user_id=user_id)
+    for gesture, threshold in defaults.gesture_thresholds.items():
+        profile.gesture_thresholds.setdefault(gesture, threshold)
+    for gesture, action in defaults.gesture_bindings.items():
+        profile.gesture_bindings.setdefault(gesture, action)
+    return profile
 
 
 def get_or_create_profile(user_id: str) -> Profile:

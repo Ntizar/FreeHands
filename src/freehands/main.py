@@ -13,7 +13,7 @@ from .fusion import MultimodalFusion, State
 from .gaze import GazeRegressor, GazeTracker
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import load_profile
-from .ui.overlay import GazeOverlay
+from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .voice import VoiceListener
 
 
@@ -68,6 +68,24 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     fusion.sm.activate()  # start in ACTIVE; fist gesture toggles back to IDLE
 
+    panel = FreeHandsControlPanel(user_id)
+
+    def activate_system() -> None:
+        fusion.sm.activate()
+        overlay.flash_action("FreeHands activo")
+        panel.set_state(fusion.sm.state)
+
+    def pause_system() -> None:
+        fusion.sm.pause()
+        overlay.flash_action("FreeHands pausado")
+        panel.set_state(fusion.sm.state)
+
+    panel.activate_clicked.connect(activate_system)
+    panel.pause_clicked.connect(pause_system)
+    panel.quit_clicked.connect(app.quit)
+    panel.set_state(fusion.sm.state)
+    panel.show()
+
     if voice_enabled and profile.voice_enabled:
         try:
             voice_listener = VoiceListener(
@@ -113,6 +131,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         result = fusion.step(cursor, confirmed)
 
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state)
+        panel.set_state(result.state)
 
         if result.fired_action:
             overlay.flash_action(result.fired_action)

@@ -13,6 +13,7 @@ const $ = (id) => document.getElementById(id);
 
 /** Sequence of gestures we want the user to perform. */
 const ROUND = [
+  { id: 'Pointing_Up', label: 'Índice arriba ☝', binding: 'click' },
   { id: 'Thumb_Up',    label: 'Pulgar arriba 👍',  binding: 'click' },
   { id: 'Thumb_Down',  label: 'Pulgar abajo 👎',   binding: 'escape' },
   { id: 'Open_Palm',   label: 'Mano abierta 🖐️',   binding: 'pause' },

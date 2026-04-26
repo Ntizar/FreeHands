@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import random
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -71,8 +72,8 @@ class WelcomeScreen(QtWidgets.QWidget):
             body = (
                 "Vamos a recalibrar sólo tu mirada. No repetiremos gestos.\n"
                 "• Mira fijamente cada punto\n"
-                "• Haz clic encima con el ratón\n"
-                "• Repite ~30-40 veces (3 por posición)\n\n"
+                "• Haz clic para confirmar cuando estés mirando el punto\n"
+                "• Son sólo 10 puntos en modo prueba\n\n"
                 "Mantén la cabeza relativamente quieta y la cara bien iluminada."
             )
             button_text = "Calibrar mirada"
@@ -124,6 +125,35 @@ class AimTrainer(QtWidgets.QWidget):
         self._target_radius = 26
         self._plan = self._build_plan()
         self._current_idx = 0
+        self._latest_vector: np.ndarray | None = None
+        self._latest_seen_at = 0.0
+        self._status_message = "Buscando tu mirada..."
+        self._status_kind = "warn"
+
+        self._probe_timer = QtCore.QTimer(self)
+        self._probe_timer.setInterval(120)
+        self._probe_timer.timeout.connect(self._probe_gaze)
+        self._probe_timer.start()
+
+    def _set_status(self, message: str, kind: str = "info") -> None:
+        self._status_message = message
+        self._status_kind = kind
+        self.update()
+
+    def _probe_gaze(self) -> None:
+        frame = self._camera.read()
+        if frame is None:
+            self._latest_vector = None
+            self._set_status("Camara ocupada o sin frames. Cierra otras apps que usen webcam.", "error")
+            return
+        feats = self._tracker.extract(frame.image)
+        if feats is None:
+            self._latest_vector = None
+            self._set_status("No veo bien tus ojos. Mira al punto con buena luz frontal.", "warn")
+            return
+        self._latest_vector = feats.vector
+        self._latest_seen_at = time.monotonic()
+        self._set_status("Mirada detectada. Haz clic para guardar este punto.", "ok")
 
     # ── plan ──────────────────────────────────────────────────────────────
     def _build_plan(self) -> _Plan:
@@ -167,6 +197,16 @@ class AimTrainer(QtWidgets.QWidget):
         p.drawText(QtCore.QRect(0, 50, rect.width(), 30),
                    QtCore.Qt.AlignmentFlag.AlignHCenter, info)
 
+        status_color = {
+            "ok": QtGui.QColor("#1a7f37"),
+            "warn": QtGui.QColor(PALETTE.orange),
+            "error": QtGui.QColor("#b42318"),
+        }.get(self._status_kind, QtGui.QColor(PALETTE.text_secondary))
+        p.setPen(status_color)
+        font = p.font(); font.setPointSize(10); font.setBold(True); p.setFont(font)
+        p.drawText(QtCore.QRect(0, 82, rect.width(), 28),
+                   QtCore.Qt.AlignmentFlag.AlignHCenter, self._status_message)
+
         # target
         if self._current_idx < len(self._plan.points):
             tx, ty = self._plan.points[self._current_idx]
@@ -189,29 +229,29 @@ class AimTrainer(QtWidgets.QWidget):
         if self._current_idx >= len(self._plan.points):
             return
         target = self._plan.points[self._current_idx]
-        click = (event.position().x(), event.position().y())
-        # Only accept clicks reasonably close to the target (anti-cheat)
-        if (click[0] - target[0]) ** 2 + (click[1] - target[1]) ** 2 > (self._target_radius * 2.5) ** 2:
+        vector = self._latest_vector
+        if vector is None or time.monotonic() - self._latest_seen_at > 1.0:
+            frame = self._camera.read()
+            feats = self._tracker.extract(frame.image) if frame is not None else None
+            vector = feats.vector if feats is not None else None
+        if vector is None:
+            self._set_status("Click recibido, pero aun no veo la mirada. Ajusta luz/cara y prueba otra vez.", "error")
             return
 
-        frame = self._camera.read()
-        if frame is None:
-            return
-        feats = self._tracker.extract(frame.image)
-        if feats is None:
-            return  # face not detected — skip silently
-
-        self._samples.append(CalibrationSample(features=feats.vector, target_xy=target))
+        self._samples.append(CalibrationSample(features=vector, target_xy=target))
         self._current_idx += 1
+        self._set_status("Punto guardado.", "ok")
         self.update()
 
         if self._current_idx >= len(self._plan.points):
+            self._probe_timer.stop()
             self.finished.emit(self._samples)
 
 
 # ── Gesture round (Phase 2) ───────────────────────────────────────────────
 GESTURE_ROUND: list[tuple[str, str, str]] = [
     # (gesture_id, label, helper text)
+    ("pointing_up", "Índice arriba ☝", "Levanta sólo el índice: será el toque final para hacer clic."),
     ("thumb_up",    "Pulgar arriba 👍",  "Cierra el resto de dedos y levanta el pulgar."),
     ("thumb_down",  "Pulgar abajo 👎",   "Cierra el resto de dedos y baja el pulgar."),
     ("pinch_close", "Pellizco cerrado 🤏", "Junta el pulgar y el índice."),

@@ -40,7 +40,7 @@ except Exception as exc:  # pragma: no cover
     _mp_tasks_error = exc
 
 
-GestureId = Literal["thumb_up", "thumb_down", "pinch_open", "pinch_close",
+GestureId = Literal["thumb_up", "thumb_down", "pointing_up", "pinch_open", "pinch_close",
                     "fist_pause", "open_palm", "none"]
 
 # Landmark indices
@@ -116,6 +116,7 @@ class HandTracker:
         return {
             "Thumb_Up": "thumb_up",
             "Thumb_Down": "thumb_down",
+            "Pointing_Up": "pointing_up",
             "Open_Palm": "open_palm",
             "Closed_Fist": "fist_pause",
         }.get(category, "none")
@@ -141,6 +142,9 @@ class HandTracker:
             return "thumb_up", 0.92
         if folded_others and thumb_down_dir:
             return "thumb_down", 0.92
+
+        if index_up and not any([middle_up, ring_up, pinky_up]):
+            return "pointing_up", 0.90
 
         # Pinch: distance index_tip ↔ thumb_tip
         d = float(np.linalg.norm(pts[INDEX_TIP, :2] - pts[THUMB_TIP, :2]))

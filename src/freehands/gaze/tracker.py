@@ -96,21 +96,26 @@ class GazeTracker:
             lm = result.face_landmarks[0]
         h, w = frame_bgr.shape[:2]
 
-        if len(lm) <= max(RIGHT_IRIS):
+        if len(lm) <= max(RIGHT_EYE_CORNERS):
             return None
 
         def pt(i: int) -> np.ndarray:
             return np.array([lm[i].x * w, lm[i].y * h])
-
-        # Iris centroids
-        left_iris = np.mean([pt(i) for i in LEFT_IRIS], axis=0)
-        right_iris = np.mean([pt(i) for i in RIGHT_IRIS], axis=0)
 
         # Normalise iris position by eye width (per-eye)
         l_outer, l_inner = pt(LEFT_EYE_CORNERS[0]), pt(LEFT_EYE_CORNERS[1])
         r_inner, r_outer = pt(RIGHT_EYE_CORNERS[0]), pt(RIGHT_EYE_CORNERS[1])
         l_w = max(np.linalg.norm(l_outer - l_inner), 1e-6)
         r_w = max(np.linalg.norm(r_outer - r_inner), 1e-6)
+
+        if len(lm) > max(RIGHT_IRIS):
+            left_iris = np.mean([pt(i) for i in LEFT_IRIS], axis=0)
+            right_iris = np.mean([pt(i) for i in RIGHT_IRIS], axis=0)
+            confidence = 1.0
+        else:
+            left_iris = (l_outer + l_inner) / 2.0
+            right_iris = (r_inner + r_outer) / 2.0
+            confidence = 0.65
 
         l_rel = (left_iris - l_outer) / l_w     # 2-vector
         r_rel = (right_iris - r_inner) / r_w    # 2-vector
@@ -121,7 +126,7 @@ class GazeTracker:
         head = (nose - eye_mid) / max(np.linalg.norm(l_outer - r_outer), 1e-6)
 
         feats = np.concatenate([l_rel, r_rel, head])  # 6-d
-        return GazeFeatures(vector=feats, confidence=1.0)
+        return GazeFeatures(vector=feats, confidence=confidence)
 
     def close(self) -> None:
         self._mesh.close()

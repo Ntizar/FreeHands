@@ -3,7 +3,7 @@ REM ----------------------------------------------------------------------
 REM  FreeHands - launcher unico (doble-click).
 REM
 REM  Sin argumentos              -> menu interactivo.
-REM  FreeHands.bat run           -> arranca con usuario "Ntizar".
+REM  FreeHands.bat run           -> activa FreeHands con usuario "Ntizar".
 REM  FreeHands.bat calibrate     -> mirada + gestos para "Ntizar".
 REM  FreeHands.bat gestures      -> solo gestos para "Ntizar".
 REM  FreeHands.bat repair        -> reinstala dependencias runtime.
@@ -90,7 +90,7 @@ if "%CMD%"=="" (
     echo  ------------------------------------------
     echo   FreeHands - usuario: %USER%
     echo  ------------------------------------------
-    echo   1^) Ejecutar sistema
+    echo   1^) Activar FreeHands ^(control del PC^)
     echo   2^) Calibrar todo (mirada + gestos^)
     echo   3^) Recalibrar solo mirada
     echo   4^) Recalibrar solo gestos
@@ -136,7 +136,7 @@ if /I "%CMD%"=="doctor" (
     echo [FreeHands] Recalibrando solo gestos para usuario "%USER%"...
     python -m freehands calibrate-gestures --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="run" (
-    echo [FreeHands] Iniciando sistema para usuario "%USER%"...
+    echo [FreeHands] Activando FreeHands para usuario "%USER%"...
     echo            ^(Si no tienes perfil, se abrira la calibracion primero.^)
     python -m freehands run --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else (

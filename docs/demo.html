@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreeHands · Demo de mirada en navegador</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css" />
+  <!-- WebGazer.js: gaze estimation client-side -->
+  <script src="https://webgazer.cs.brown.edu/webgazer.js" defer></script>
+</head>
+<body class="demo-body">
+  <div class="bg-orbs">
+    <span class="orb orb-blue"></span>
+    <span class="orb orb-orange"></span>
+  </div>
+
+  <header class="nav glass">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">FreeHands</span>
+      <span class="brand-by">demo</span>
+    </div>
+    <nav>
+      <a href="index.html" class="btn btn-ghost">← Volver</a>
+      <a href="https://github.com/Ntizar/FreeHands" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main class="demo-main">
+    <section id="welcome" class="glass card welcome">
+      <span class="pill">Demo en navegador</span>
+      <h1>Aim-trainer de calibración</h1>
+      <p class="lead">
+        Vamos a calibrar tu mirada usando <b>WebGazer.js</b>. Te aparecerán puntos
+        naranjas: <b>míralos y haz clic</b>. Cuanto más puntos completes, más precisa
+        será la predicción.
+      </p>
+      <ul class="checklist">
+        <li>📷 Permite el acceso a la webcam cuando lo pida.</li>
+        <li>💡 Asegúrate de tener buena luz frontal.</li>
+        <li>🪑 Mantén la cabeza relativamente quieta.</li>
+        <li>🔒 Todo corre en tu navegador. Ningún frame se envía a un servidor.</li>
+      </ul>
+      <button id="start" class="btn btn-primary btn-lg">▶ Empezar</button>
+    </section>
+
+    <!-- Aim trainer surface -->
+    <div id="arena" class="arena hidden">
+      <div id="hud" class="hud glass">
+        <span id="hud-state">PREPARANDO…</span>
+        <span class="sep">·</span>
+        <span id="hud-progress">0 / 0</span>
+        <span class="sep">·</span>
+        <button id="finish" class="btn btn-ghost btn-sm">Terminar</button>
+      </div>
+      <div id="cursor" class="gaze-cursor"></div>
+      <div id="target" class="target hidden"></div>
+    </div>
+
+    <section id="result" class="glass card result hidden">
+      <h2>Calibración completada ✅</h2>
+      <p>Puntos válidos: <b id="r-points">0</b></p>
+      <p>Error medio estimado: <b id="r-rms">— px</b></p>
+      <div class="cta-row">
+        <button id="restart" class="btn btn-accent">Repetir</button>
+        <a href="index.html" class="btn btn-ghost">Volver a la home</a>
+      </div>
+      <p class="micro">¿Quieres control real del SO con gestos y voz? Instala la <a href="https://github.com/Ntizar/FreeHands#-quick-start">app de escritorio</a>.</p>
+    </section>
+  </main>
+
+  <script src="assets/demo.js" defer></script>
+</body>
+</html>

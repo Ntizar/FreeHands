@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreeHands · Control hands-free por mirada, gestos y voz</title>
+  <meta name="description" content="Sistema multimodal hands-free de control de pantalla por mirada, gestos y voz. Diseño Ntizar liquid-glass." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+  <div class="bg-orbs">
+    <span class="orb orb-blue"></span>
+    <span class="orb orb-orange"></span>
+    <span class="orb orb-blue-2"></span>
+  </div>
+
+  <header class="nav glass">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">FreeHands</span>
+      <span class="brand-by">by Ntizar</span>
+    </div>
+    <nav>
+      <a href="#features">Características</a>
+      <a href="#how">Cómo funciona</a>
+      <a href="demo.html" class="btn btn-ghost">Probar demo</a>
+      <a href="https://github.com/Ntizar/FreeHands" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-text glass card">
+        <span class="pill">v0.1 · MVP Phase 1</span>
+        <h1>Controla la pantalla<br/><span class="grad">sin manos.</span></h1>
+        <p class="lead">
+          FreeHands combina <b>mirada</b>, <b>gestos</b> y <b>voz</b> con una capa
+          anti-falsos-positivos pensada para accesibilidad y productividad.
+          Configurable en 2 minutos con un minijuego tipo <i>aim-trainer</i>.
+        </p>
+        <div class="cta-row">
+          <a href="demo.html" class="btn btn-primary btn-lg">▶ Probar demo en navegador</a>
+          <a href="https://github.com/Ntizar/FreeHands#-quick-start" class="btn btn-accent btn-lg" target="_blank" rel="noopener">⬇ App de escritorio</a>
+        </div>
+        <p class="micro">Demo: WebGazer.js · 100 % en tu navegador · ningún dato sale de tu equipo.</p>
+      </div>
+
+      <aside class="hero-card glass card">
+        <div class="mock">
+          <div class="mock-cursor"><span></span></div>
+          <div class="mock-ring"></div>
+          <div class="mock-badge">FreeHands · ACTIVE</div>
+          <div class="mock-target"></div>
+          <div class="mock-target t2"></div>
+          <div class="mock-target t3"></div>
+        </div>
+        <div class="mock-caption">
+          <span class="dot dot-blue"></span> Cursor de mirada
+          <span class="dot dot-orange"></span> Anillo de dwell
+        </div>
+      </aside>
+    </section>
+
+    <section id="features" class="features">
+      <h2>Una capa por cada falso positivo</h2>
+      <div class="grid">
+        <article class="glass card feat">
+          <div class="feat-ico">🛰️</div><h3>Máquina de estados</h3>
+          <p><code>IDLE → ACTIVE → CONFIRMING → COOLDOWN</code>. Nada se ejecuta sin pasar por confirmación.</p>
+        </article>
+        <article class="glass card feat">
+          <div class="feat-ico">🎯</div><h3>Estabilidad multi-frame</h3>
+          <p>Un gesto sólo cuenta tras N frames consecutivos coincidentes y confianza media.</p>
+        </article>
+        <article class="glass card feat">
+          <div class="feat-ico">🤝</div><h3>Confirmación multimodal</h3>
+          <p>Mirada + gesto. Nunca una sola modalidad para acciones críticas.</p>
+        </article>
+        <article class="glass card feat">
+          <div class="feat-ico">✋</div><h3>Pausa siempre disponible</h3>
+          <p>Puño cerrado 1 s pausa el sistema en cualquier estado.</p>
+        </article>
+        <article class="glass card feat">
+          <div class="feat-ico">👁️</div><h3>Calibración personal</h3>
+          <p>Ridge regression entrenada con un minijuego tipo <i>aim trainer</i>.</p>
+        </article>
+        <article class="glass card feat">
+          <div class="feat-ico">🔒</div><h3>100 % local</h3>
+          <p>Whisper offline, ningún frame sale del equipo. Privacidad por diseño.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="how" class="how">
+      <h2>Tres modalidades, un solo flujo</h2>
+      <div class="how-grid">
+        <div class="glass card">
+          <span class="step">01</span><h3>Mirada</h3>
+          <p>FaceMesh + iris → ridge regression personalizada → <b>(x, y)</b> en pantalla.</p>
+        </div>
+        <div class="glass card">
+          <span class="step">02</span><h3>Gestos</h3>
+          <p>MediaPipe Hands → 👍 click · 👎 escape · pinch zoom · puño pausa.</p>
+        </div>
+        <div class="glass card">
+          <span class="step">03</span><h3>Voz</h3>
+          <p>Whisper local para dictado y comandos largos (Phase 3).</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="closing glass card">
+      <h2>¿Listo para probarlo?</h2>
+      <p>La demo del navegador usa WebGazer.js: calibra mirando puntos y haciendo clic. La app de escritorio añade gestos, voz y control real del SO.</p>
+      <div class="cta-row center">
+        <a href="demo.html" class="btn btn-primary btn-lg">Lanzar demo</a>
+        <a href="https://github.com/Ntizar/FreeHands" class="btn btn-ghost btn-lg" target="_blank" rel="noopener">Ver código</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>© 2026 Ntizar · MIT</span>
+    <span>Diseño liquid-glass · Light mode</span>
+  </footer>
+</body>
+</html>

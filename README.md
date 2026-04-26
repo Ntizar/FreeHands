@@ -6,6 +6,8 @@
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
+🌐 **Demo en navegador:** [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)
+
 ---
 
 ## ✨ Visión
@@ -61,19 +63,31 @@ Stack: `Python 3.11+` · `OpenCV` · `MediaPipe` · `faster-whisper` · `PyQt6` 
 
 ## 🚀 Quick start
 
+### Windows · doble-click (recomendado)
+
+| Archivo | Qué hace |
+|---------|----------|
+| [calibrate.bat](calibrate.bat) | Crea el venv si no existe, instala deps y lanza la calibración del usuario `luis` |
+| [run.bat](run.bat) | Arranca el sistema con el perfil `luis` |
+| [freehands.bat](freehands.bat) `[calibrate\|run\|doctor]` `[usuario]` | Launcher genérico |
+
+### Manual (cualquier SO)
+
 ```bash
-git clone https://github.com/ntizar/FreeHands.git
+git clone https://github.com/Ntizar/FreeHands.git
 cd FreeHands
 python -m venv .venv
 .\.venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 
-# Calibración + perfil
 python -m freehands calibrate --user luis
-
-# Ejecutar el sistema
 python -m freehands run --user luis
 ```
+
+### Demo web (sin instalar nada)
+
+Abre **[ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)** → *Probar demo*.
+Usa **WebGazer.js** y todo el procesamiento ocurre en tu navegador.
 
 ---
 

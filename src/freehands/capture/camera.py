@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from os import name as os_name
 
 import cv2
 import numpy as np
@@ -18,15 +19,32 @@ class Frame:
 
 class Camera:
     def __init__(self, index: int = CAMERA_INDEX) -> None:
-        self._cap = cv2.VideoCapture(index)
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
-        if not self._cap.isOpened():
-            raise RuntimeError(f"Could not open camera {index}")
+        self._index = index
+        self._cap = self._open_capture(index)
         self._latest: Frame | None = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="CameraThread", daemon=True)
+
+    @staticmethod
+    def _open_capture(index: int) -> cv2.VideoCapture:
+        for backend in _candidate_backends():
+            cap = cv2.VideoCapture(index, backend)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+            if not cap.isOpened():
+                cap.release()
+                continue
+            for _ in range(5):
+                ok, _ = cap.read()
+                if ok:
+                    return cap
+            cap.release()
+        raise RuntimeError(f"Could not open camera {index} with readable frames")
+
+    @property
+    def index(self) -> int:
+        return self._index
 
     def start(self) -> "Camera":
         self._thread.start()
@@ -47,5 +65,51 @@ class Camera:
 
     def stop(self) -> None:
         self._stop.set()
-        self._thread.join(timeout=1.0)
+        if self._thread.is_alive():
+            self._thread.join(timeout=1.0)
         self._cap.release()
+
+    def switch(self, index: int) -> None:
+        new_cap = self._open_capture(index)
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        self._cap.release()
+        with self._lock:
+            self._latest = None
+        self._index = index
+        self._cap = new_cap
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, name="CameraThread", daemon=True)
+        self._thread.start()
+
+
+def list_available_cameras(max_index: int = 4) -> list[int]:
+    found: list[int] = []
+    for index in range(max_index):
+        for backend in _candidate_backends():
+            cap = cv2.VideoCapture(index, backend)
+            ok = False
+            try:
+                if cap.isOpened():
+                    for _ in range(3):
+                        ok, _ = cap.read()
+                        if ok:
+                            break
+            finally:
+                cap.release()
+            if ok:
+                found.append(index)
+                break
+    return found
+
+
+def _candidate_backends() -> list[int]:
+    if os_name != "nt":
+        return [cv2.CAP_ANY]
+    backends = [cv2.CAP_MSMF, cv2.CAP_DSHOW, cv2.CAP_ANY]
+    unique: list[int] = []
+    for backend in backends:
+        if backend not in unique:
+            unique.append(backend)
+    return unique

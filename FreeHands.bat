@@ -24,7 +24,8 @@ set "USER=%~2"
 if "%USER%"=="" set "USER=%DEFAULT_USER%"
 set "LOGDIR=%~dp0logs"
 if not exist "%LOGDIR%" mkdir "%LOGDIR%" >nul 2>nul
-set "LOGFILE=%LOGDIR%\FreeHands-last.log"
+set "LOGFILE=%LOGDIR%\FreeHands-%RANDOM%-%RANDOM%.log"
+set "LASTLOG=%LOGDIR%\FreeHands-last.log"
 set "MENU_MODE=0"
 if "%CMD%"=="" set "MENU_MODE=1"
 
@@ -161,6 +162,7 @@ if not "%EXITCODE%"=="0" (
     exit /b %EXITCODE%
 )
 if "%MENU_MODE%"=="1" (
+    copy /Y "%LOGFILE%" "%LASTLOG%" >nul 2>nul
     echo.
     echo [FreeHands] Proceso finalizado. Log guardado en:
     echo %LOGFILE%

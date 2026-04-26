@@ -27,7 +27,7 @@ from typing import Literal
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ..capture import Camera
+from ..capture import Camera, list_available_cameras
 from ..config import CALIBRATION_POINTS, SAMPLES_PER_POINT
 from ..gaze import CalibrationSample, GazeTracker, fit_gaze_model
 from ..gestures import HandTracker
@@ -72,7 +72,9 @@ class WelcomeScreen(QtWidgets.QWidget):
             body = (
                 "Vamos a recalibrar sólo tu mirada. No repetiremos gestos.\n"
                 "• Mira fijamente cada punto\n"
-                "• Haz clic para confirmar cuando estés mirando el punto\n"
+                "• Confirma con clic o levantando sólo el índice\n"
+                "• Verás cámara, ojos, landmarks y confianza en directo\n"
+                "• Pulsa C si está usando la cámara equivocada\n"
                 "• Son sólo 10 puntos en modo prueba\n\n"
                 "Mantén la cabeza relativamente quieta y la cara bien iluminada."
             )
@@ -80,7 +82,7 @@ class WelcomeScreen(QtWidgets.QWidget):
         else:
             body = (
                 "Vamos a calibrar mirada y gestos.\n"
-                "• Primero: mira cada punto naranja y haz clic\n"
+                "• Primero: mira cada punto naranja y confirma con clic o índice\n"
                 "• Después: mantén cada gesto frente a la cámara\n\n"
                 "La mirada se guarda antes de empezar los gestos, así que no se pierde si algo falla."
             )
@@ -115,12 +117,13 @@ class _Plan:
 class AimTrainer(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal(list)   # list[CalibrationSample]
 
-    def __init__(self, camera: Camera, tracker: GazeTracker) -> None:
+    def __init__(self, camera: Camera, tracker: GazeTracker, hand_tracker: HandTracker | None = None) -> None:
         super().__init__()
         self.setObjectName("NtizarPage")
         self.setMouseTracking(True)
         self._camera = camera
         self._tracker = tracker
+        self._hand_tracker = hand_tracker
         self._samples: list[CalibrationSample] = []
         self._target_radius = 26
         self._plan = self._build_plan()
@@ -129,6 +132,13 @@ class AimTrainer(QtWidgets.QWidget):
         self._latest_seen_at = 0.0
         self._status_message = "Buscando tu mirada..."
         self._status_kind = "warn"
+        self._preview_image: np.ndarray | None = None
+        self._available_cameras = list_available_cameras()
+        if self._camera.index not in self._available_cameras:
+            self._available_cameras.insert(0, self._camera.index)
+        self._confirm_hold = 0
+        self._confirm_cooldown_until = 0.0
+        self._last_confirm_label = "gesto=esperando"
 
         self._probe_timer = QtCore.QTimer(self)
         self._probe_timer.setInterval(120)
@@ -146,14 +156,47 @@ class AimTrainer(QtWidgets.QWidget):
             self._latest_vector = None
             self._set_status("Camara ocupada o sin frames. Cierra otras apps que usen webcam.", "error")
             return
+        self._preview_image = frame.image.copy()
         feats = self._tracker.extract(frame.image)
+        debug = self._tracker.last_debug
         if feats is None:
             self._latest_vector = None
-            self._set_status("No veo bien tus ojos. Mira al punto con buena luz frontal.", "warn")
+            self._set_status(debug.message + ". Pulsa C para cambiar camara.", "warn")
             return
         self._latest_vector = feats.vector
         self._latest_seen_at = time.monotonic()
         self._set_status("Mirada detectada. Haz clic para guardar este punto.", "ok")
+        if self._hand_tracker is not None and time.monotonic() >= self._confirm_cooldown_until:
+            obs = self._hand_tracker.detect(frame.image)
+            self._last_confirm_label = f"gesto={obs.gesture} · {obs.confidence:.2f}"
+            if obs.gesture == "pointing_up" and obs.confidence >= 0.70:
+                self._confirm_hold += 1
+                if self._confirm_hold >= 3:
+                    self._record_current_target("Índice arriba guardó el punto.")
+                    self._confirm_hold = 0
+                    self._confirm_cooldown_until = time.monotonic() + 0.65
+            else:
+                self._confirm_hold = max(0, self._confirm_hold - 1)
+
+    def _switch_camera(self) -> None:
+        cameras = self._available_cameras or [self._camera.index]
+        try:
+            pos = cameras.index(self._camera.index)
+        except ValueError:
+            pos = -1
+        for step in range(1, len(cameras) + 1):
+            next_index = cameras[(pos + step) % len(cameras)]
+            if next_index == self._camera.index:
+                continue
+            try:
+                self._camera.switch(next_index)
+                self._preview_image = None
+                self._latest_vector = None
+                self._set_status(f"Cambiado a camara {next_index}. Esperando ojos...", "warn")
+                return
+            except Exception as exc:
+                self._set_status(f"No pude abrir camara {next_index}: {exc}", "error")
+        self._set_status("No hay otra camara disponible.", "error")
 
     # ── plan ──────────────────────────────────────────────────────────────
     def _build_plan(self) -> _Plan:
@@ -191,7 +234,7 @@ class AimTrainer(QtWidgets.QWidget):
         p.setBrush(QtGui.QColor(PALETTE.blue))
         p.drawRoundedRect(bx, 30, int(bar_w * progress), 10, 5, 5)
 
-        info = f"{self._current_idx}/{len(self._plan.points)}  ·  Mira el punto naranja y haz clic"
+        info = f"{self._current_idx}/{len(self._plan.points)}  ·  Mira el punto y confirma con click o índice arriba"
         p.setPen(QtGui.QColor(PALETTE.text_secondary))
         font = p.font(); font.setPointSize(11); p.setFont(font)
         p.drawText(QtCore.QRect(0, 50, rect.width(), 30),
@@ -206,6 +249,8 @@ class AimTrainer(QtWidgets.QWidget):
         font = p.font(); font.setPointSize(10); font.setBold(True); p.setFont(font)
         p.drawText(QtCore.QRect(0, 82, rect.width(), 28),
                    QtCore.Qt.AlignmentFlag.AlignHCenter, self._status_message)
+
+        self._draw_gaze_preview(p, rect)
 
         # target
         if self._current_idx < len(self._plan.points):
@@ -223,11 +268,9 @@ class AimTrainer(QtWidgets.QWidget):
             p.drawEllipse(QtCore.QPoint(tx, ty), 6, 6)
 
     # ── mouse → record sample ────────────────────────────────────────────
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
-        if event.button() != QtCore.Qt.MouseButton.LeftButton:
-            return
+    def _record_current_target(self, message: str) -> bool:
         if self._current_idx >= len(self._plan.points):
-            return
+            return False
         target = self._plan.points[self._current_idx]
         vector = self._latest_vector
         if vector is None or time.monotonic() - self._latest_seen_at > 1.0:
@@ -235,27 +278,102 @@ class AimTrainer(QtWidgets.QWidget):
             feats = self._tracker.extract(frame.image) if frame is not None else None
             vector = feats.vector if feats is not None else None
         if vector is None:
-            self._set_status("Click recibido, pero aun no veo la mirada. Ajusta luz/cara y prueba otra vez.", "error")
-            return
+            self._set_status("Confirmacion recibida, pero aun no veo la mirada. Ajusta luz/cara.", "error")
+            return False
 
         self._samples.append(CalibrationSample(features=vector, target_xy=target))
         self._current_idx += 1
-        self._set_status("Punto guardado.", "ok")
+        self._set_status(message, "ok")
         self.update()
 
         if self._current_idx >= len(self._plan.points):
             self._probe_timer.stop()
             self.finished.emit(self._samples)
+        return True
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:  # noqa: N802
+        if event.button() != QtCore.Qt.MouseButton.LeftButton:
+            return
+        self._record_current_target("Click guardó el punto.")
+
+    def _draw_gaze_preview(self, p: QtGui.QPainter, rect: QtCore.QRect) -> None:
+        preview_w = min(360, max(260, rect.width() // 4))
+        preview_h = int(preview_w * 0.75)
+        margin = 28
+        if rect.width() < 780:
+            box = QtCore.QRect((rect.width() - preview_w) // 2, 124, preview_w, preview_h)
+        else:
+            box = QtCore.QRect(rect.width() - preview_w - margin, 116, preview_w, preview_h)
+
+        p.setBrush(QtGui.QColor(255, 255, 255, 205))
+        p.setPen(QtGui.QPen(QtGui.QColor(PALETTE.blue), 2))
+        p.drawRoundedRect(box.adjusted(-8, -30, 8, 88), 18, 18)
+
+        debug = self._tracker.last_debug
+        title = f"Camara {self._camera.index} · {debug.backend} · C cambia"
+        p.setPen(QtGui.QColor(PALETTE.text_primary))
+        font = p.font(); font.setPointSize(10); font.setBold(True); p.setFont(font)
+        p.drawText(box.adjusted(0, -25, 0, 0), QtCore.Qt.AlignmentFlag.AlignLeft, title)
+
+        if self._preview_image is None:
+            p.setBrush(QtGui.QColor(20, 24, 36, 230))
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.drawRoundedRect(box, 12, 12)
+            p.setPen(QtGui.QColor("white"))
+            p.drawText(box, QtCore.Qt.AlignmentFlag.AlignCenter, "Esperando camara...")
+        else:
+            rgb = self._preview_image[:, :, ::-1].copy()
+            h, w, _ = rgb.shape
+            image = QtGui.QImage(rgb.data, w, h, rgb.strides[0], QtGui.QImage.Format.Format_RGB888).copy()
+            p.drawImage(box, image)
+
+            if debug.points:
+                def map_point(name: str) -> QtCore.QPoint:
+                    x, y = debug.points[name]
+                    return QtCore.QPoint(box.left() + int(x / w * box.width()), box.top() + int(y / h * box.height()))
+
+                p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+                p.setPen(QtGui.QPen(QtGui.QColor(PALETTE.orange), 3))
+                p.drawLine(map_point("left_outer"), map_point("left_inner"))
+                p.drawLine(map_point("right_inner"), map_point("right_outer"))
+                p.setBrush(QtGui.QColor(PALETTE.blue))
+                p.setPen(QtCore.Qt.PenStyle.NoPen)
+                for name in ("left_iris", "right_iris", "nose"):
+                    radius = 6 if name != "nose" else 4
+                    p.drawEllipse(map_point(name), radius, radius)
+
+        details = (
+            f"cara={'si' if debug.face_detected else 'no'} · "
+            f"landmarks={debug.landmark_count} · "
+            f"iris={'si' if debug.iris_detected else 'no'} · "
+            f"conf={debug.confidence:.2f}"
+        )
+        vector_values = [] if self._latest_vector is None else self._latest_vector[:4]
+        vector = "v=" + ", ".join(f"{v:.2f}" for v in vector_values)
+        p.setBrush(QtGui.QColor(255, 255, 255, 230))
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        badge = QtCore.QRect(box.left() + 10, box.bottom() + 10, box.width() - 20, 46)
+        p.drawRoundedRect(badge, 12, 12)
+        p.setPen(QtGui.QColor(PALETTE.text_primary))
+        font = p.font(); font.setPointSize(8); font.setBold(False); p.setFont(font)
+        p.drawText(badge.adjusted(8, 4, -8, -24), QtCore.Qt.AlignmentFlag.AlignLeft, details)
+        p.drawText(badge.adjusted(8, 23, -8, -4), QtCore.Qt.AlignmentFlag.AlignLeft,
+               vector + " · " + self._last_confirm_label)
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:  # noqa: N802
+        if event.key() == QtCore.Qt.Key.Key_C:
+            self._switch_camera()
 
 
 # ── Gesture round (Phase 2) ───────────────────────────────────────────────
 GESTURE_ROUND: list[tuple[str, str, str]] = [
     # (gesture_id, label, helper text)
     ("pointing_up", "Índice arriba ☝", "Levanta sólo el índice: será el toque final para hacer clic."),
-    ("thumb_up",    "Pulgar arriba 👍",  "Cierra el resto de dedos y levanta el pulgar."),
-    ("thumb_down",  "Pulgar abajo 👎",   "Cierra el resto de dedos y baja el pulgar."),
-    ("pinch_close", "Pellizco cerrado 🤏", "Junta el pulgar y el índice."),
-    ("fist_pause",  "Puño cerrado ✊",    "Cierra los cinco dedos: gesto de pausa global."),
+    ("middle_up", "Segundo dedo arriba", "Levanta sólo el dedo corazón: será clic derecho."),
+    ("two_fingers_up", "Índice + segundo", "Levanta índice y corazón juntos: será doble clic."),
+    ("two_hands_together", "Dos manos juntas", "Muestra las dos manos juntas: zoom in."),
+    ("two_hands_apart", "Dos manos separadas", "Muestra las dos manos separadas: zoom out."),
+    ("fist_pause",  "Puño cerrado ✊",    "Cierra los cinco dedos: activa o desactiva FreeHands."),
 ]
 HOLD_FRAMES = 12          # ~0.4 s @ 30 fps
 HOLD_CONFIDENCE = 0.65    # minimum sustained confidence
@@ -294,8 +412,11 @@ class GestureTrainer(QtWidgets.QWidget):
         self._confs: list[float] = []
         self._last_obs_label = "—"
         self._last_confidence = 0.0
-        self._last_landmarks: np.ndarray | None = None
+        self._last_hands: list[np.ndarray] = []
         self._preview_image: np.ndarray | None = None
+        self._available_cameras = list_available_cameras()
+        if self._camera.index not in self._available_cameras:
+            self._available_cameras.insert(0, self._camera.index)
 
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -334,6 +455,26 @@ class GestureTrainer(QtWidgets.QWidget):
         else:
             self.update()
 
+    def _switch_camera(self) -> None:
+        cameras = self._available_cameras or [self._camera.index]
+        try:
+            pos = cameras.index(self._camera.index)
+        except ValueError:
+            pos = -1
+        for step in range(1, len(cameras) + 1):
+            next_index = cameras[(pos + step) % len(cameras)]
+            if next_index == self._camera.index:
+                continue
+            try:
+                self._camera.switch(next_index)
+                self._preview_image = None
+                self._last_hands = []
+                self._last_obs_label = f"camara {next_index}"
+                self.update()
+                return
+            except Exception:
+                continue
+
     # ── per-frame logic ──────────────────────────────────────────────────
     def _tick(self) -> None:
         cur = self._current()
@@ -351,7 +492,7 @@ class GestureTrainer(QtWidgets.QWidget):
             return
         obs = self._hands.detect(frame.image)
         self._preview_image = frame.image.copy()
-        self._last_landmarks = obs.landmarks
+        self._last_hands = obs.hands
         self._last_obs_label = obs.gesture
         self._last_confidence = obs.confidence
 
@@ -446,7 +587,8 @@ class GestureTrainer(QtWidgets.QWidget):
 
         p.setPen(QtGui.QColor(PALETTE.text_primary))
         font = p.font(); font.setPointSize(10); font.setBold(True); p.setFont(font)
-        p.drawText(box.adjusted(0, -24, 0, 0), QtCore.Qt.AlignmentFlag.AlignLeft, "Cámara / mano")
+        p.drawText(box.adjusted(0, -24, 0, 0), QtCore.Qt.AlignmentFlag.AlignLeft,
+               f"Cámara {self._camera.index} / mano · C cambia")
 
         if self._preview_image is None:
             p.setBrush(QtGui.QColor(20, 24, 36, 230))
@@ -461,23 +603,24 @@ class GestureTrainer(QtWidgets.QWidget):
         image = QtGui.QImage(rgb.data, w, h, rgb.strides[0], QtGui.QImage.Format.Format_RGB888).copy()
         p.drawImage(box, image)
 
-        if self._last_landmarks is not None:
+        if self._last_hands:
             p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             pen = QtGui.QPen(QtGui.QColor(PALETTE.orange), 3)
             p.setPen(pen)
-            for a, b in HAND_CONNECTIONS:
-                ax = box.left() + int(self._last_landmarks[a, 0] * box.width())
-                ay = box.top() + int(self._last_landmarks[a, 1] * box.height())
-                bx = box.left() + int(self._last_landmarks[b, 0] * box.width())
-                by = box.top() + int(self._last_landmarks[b, 1] * box.height())
-                p.drawLine(ax, ay, bx, by)
+            for hand in self._last_hands:
+                for a, b in HAND_CONNECTIONS:
+                    ax = box.left() + int(hand[a, 0] * box.width())
+                    ay = box.top() + int(hand[a, 1] * box.height())
+                    bx = box.left() + int(hand[b, 0] * box.width())
+                    by = box.top() + int(hand[b, 1] * box.height())
+                    p.drawLine(ax, ay, bx, by)
 
-            p.setBrush(QtGui.QColor(PALETTE.blue))
-            p.setPen(QtCore.Qt.PenStyle.NoPen)
-            for x, y, _ in self._last_landmarks:
-                px = box.left() + int(x * box.width())
-                py = box.top() + int(y * box.height())
-                p.drawEllipse(QtCore.QPoint(px, py), 4, 4)
+                p.setBrush(QtGui.QColor(PALETTE.blue))
+                p.setPen(QtCore.Qt.PenStyle.NoPen)
+                for x, y, _ in hand:
+                    px = box.left() + int(x * box.width())
+                    py = box.top() + int(y * box.height())
+                    p.drawEllipse(QtCore.QPoint(px, py), 4, 4)
 
         status = f"{self._last_obs_label} · {self._last_confidence:.2f}"
         p.setBrush(QtGui.QColor(255, 255, 255, 220))
@@ -489,6 +632,9 @@ class GestureTrainer(QtWidgets.QWidget):
         p.drawText(badge, QtCore.Qt.AlignmentFlag.AlignCenter, status)
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:  # noqa: N802
+        if event.key() == QtCore.Qt.Key.Key_C:
+            self._switch_camera()
+            return
         if event.key() == QtCore.Qt.Key.Key_Escape:
             self._record_and_advance(detected=False)
 
@@ -532,7 +678,11 @@ class CalibrationWindow(QtWidgets.QMainWindow):
                 "\n\nEjecuta FreeHands.bat doctor para reparar/ver dependencias.",
             )
             self.close(); return
-        self.aim = AimTrainer(self._camera, self._tracker)
+        try:
+            self._hands = HandTracker()
+        except Exception:
+            self._hands = None
+        self.aim = AimTrainer(self._camera, self._tracker, self._hands)
         self.aim.finished.connect(self._after_aim)
         self._stack.addWidget(self.aim)
         self._stack.setCurrentWidget(self.aim)
@@ -567,7 +717,8 @@ class CalibrationWindow(QtWidgets.QMainWindow):
 
     def _start_gestures(self) -> None:
         try:
-            self._hands = HandTracker()
+            if self._hands is None:
+                self._hands = HandTracker()
         except Exception as exc:
             QtWidgets.QMessageBox.information(
                 self, "Calibración",

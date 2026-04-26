@@ -15,22 +15,32 @@ class GestureStabilizer:
         Mean confidence across the buffer must clear this threshold.
     """
 
-    def __init__(self, required_frames: int = 8, confidence_min: float = 0.85) -> None:
-        self._buf: deque[tuple[str, float]] = deque(maxlen=required_frames)
+    def __init__(
+        self,
+        required_frames: int = 8,
+        confidence_min: float = 0.85,
+        per_gesture: dict[str, tuple[int, float]] | None = None,
+    ) -> None:
+        self._per_gesture = per_gesture or {}
+        max_frames = max([required_frames, *[frames for frames, _ in self._per_gesture.values()]])
+        self._buf: deque[tuple[str, float]] = deque(maxlen=max_frames)
         self._required = required_frames
         self._threshold = confidence_min
         self._last_emitted: str | None = None
 
     def update(self, gesture: str, confidence: float) -> str | None:
         self._buf.append((gesture, confidence))
-        if len(self._buf) < self._required:
+        first = self._buf[-1][0]
+        required, threshold = self._per_gesture.get(first, (self._required, self._threshold))
+        if len(self._buf) < required:
             return None
 
-        first = self._buf[0][0]
-        if first == "none" or any(g != first for g, _ in self._buf):
+        recent = list(self._buf)[-required:]
+        first = recent[0][0]
+        if first == "none" or any(g != first for g, _ in recent):
             return None
-        avg_conf = sum(c for _, c in self._buf) / len(self._buf)
-        if avg_conf < self._threshold:
+        avg_conf = sum(c for _, c in recent) / len(recent)
+        if avg_conf < threshold:
             return None
 
         # edge-trigger: don't re-emit while the same gesture is held

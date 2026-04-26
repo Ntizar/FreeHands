@@ -13,7 +13,7 @@ is what actually fires actions.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 import numpy as np
@@ -40,8 +40,11 @@ except Exception as exc:  # pragma: no cover
     _mp_tasks_error = exc
 
 
-GestureId = Literal["thumb_up", "thumb_down", "pointing_up", "pinch_open", "pinch_close",
-                    "fist_pause", "open_palm", "none"]
+GestureId = Literal[
+    "thumb_up", "thumb_down", "pointing_up", "middle_up", "two_fingers_up",
+    "pinch_open", "pinch_close", "two_hands_together", "two_hands_apart",
+    "fist_pause", "open_palm", "none",
+]
 
 # Landmark indices
 WRIST = 0
@@ -57,6 +60,7 @@ class HandObservation:
     gesture: GestureId
     confidence: float
     landmarks: np.ndarray | None  # shape (21, 3) normalised
+    hands: list[np.ndarray] = field(default_factory=list)
 
 
 class HandTracker:
@@ -64,7 +68,7 @@ class HandTracker:
         self._backend = "solutions" if _mp_hands is not None else "tasks"
         if _mp_hands is not None:
             self._hands = _mp_hands.Hands(
-                max_num_hands=1,
+                max_num_hands=2,
                 min_detection_confidence=0.6,
                 min_tracking_confidence=0.6,
             )
@@ -73,7 +77,7 @@ class HandTracker:
             options = mp_vision.GestureRecognizerOptions(
                 base_options=mp_tasks.BaseOptions(model_asset_path=str(model_path)),
                 running_mode=mp_vision.RunningMode.IMAGE,
-                num_hands=1,
+                num_hands=2,
                 min_hand_detection_confidence=0.5,
                 min_hand_presence_confidence=0.5,
                 min_tracking_confidence=0.5,
@@ -91,35 +95,48 @@ class HandTracker:
             result = self._hands.process(rgb)
             if not result.multi_hand_landmarks:
                 self._prev_pinch_dist = None
-                return HandObservation("none", 0.0, None)
-            lm = result.multi_hand_landmarks[0].landmark
-            pts = np.array([[p.x, p.y, p.z] for p in lm])
-            gesture, conf = self._classify(pts)
-            return HandObservation(gesture, conf, pts)
+                return HandObservation("none", 0.0, None, [])
+            hands = [np.array([[p.x, p.y, p.z] for p in item.landmark]) for item in result.multi_hand_landmarks]
+            gesture, conf = self._classify_multi(hands)
+            return HandObservation(gesture, conf, hands[0], hands)
 
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = self._hands.recognize(image)
         if not result.hand_landmarks:
             self._prev_pinch_dist = None
-            return HandObservation("none", 0.0, None)
+            return HandObservation("none", 0.0, None, [])
 
-        pts = np.array([[p.x, p.y, p.z] for p in result.hand_landmarks[0]])
-        gesture, conf = self._classify(pts)
+        hands = [np.array([[p.x, p.y, p.z] for p in item]) for item in result.hand_landmarks]
+        gesture, conf = self._classify_multi(hands)
         if result.gestures and result.gestures[0]:
             top = result.gestures[0][0]
             mapped = self._map_task_gesture(top.category_name)
-            if mapped != "none" and float(top.score) >= 0.40:
+            if gesture not in {"two_hands_together", "two_hands_apart"} and mapped != "none" and float(top.score) >= 0.40:
                 gesture, conf = mapped, float(top.score)
-        return HandObservation(gesture, conf, pts)
+        return HandObservation(gesture, conf, hands[0], hands)
 
     def _map_task_gesture(self, category: str) -> GestureId:
         return {
             "Thumb_Up": "thumb_up",
             "Thumb_Down": "thumb_down",
             "Pointing_Up": "pointing_up",
+            "Victory": "two_fingers_up",
             "Open_Palm": "open_palm",
             "Closed_Fist": "fist_pause",
         }.get(category, "none")
+
+    def _classify_multi(self, hands: list[np.ndarray]) -> tuple[GestureId, float]:
+        if len(hands) >= 2:
+            left, right = hands[0], hands[1]
+            center_a = np.mean(left[:, :2], axis=0)
+            center_b = np.mean(right[:, :2], axis=0)
+            dist = float(np.linalg.norm(center_a - center_b))
+            vertical_gap = abs(float(center_a[1] - center_b[1]))
+            if vertical_gap < 0.28 and dist < 0.24:
+                return "two_hands_together", 0.92
+            if vertical_gap < 0.36 and dist > 0.48:
+                return "two_hands_apart", 0.90
+        return self._classify(hands[0])
 
     # ── classification ────────────────────────────────────────────────────
     def _classify(self, pts: np.ndarray) -> tuple[GestureId, float]:
@@ -143,8 +160,12 @@ class HandTracker:
         if folded_others and thumb_down_dir:
             return "thumb_down", 0.92
 
+        if index_up and middle_up and not any([ring_up, pinky_up]):
+            return "two_fingers_up", 0.90
         if index_up and not any([middle_up, ring_up, pinky_up]):
             return "pointing_up", 0.90
+        if middle_up and not any([index_up, ring_up, pinky_up]):
+            return "middle_up", 0.88
 
         # Pinch: distance index_tip ↔ thumb_tip
         d = float(np.linalg.norm(pts[INDEX_TIP, :2] - pts[THUMB_TIP, :2]))

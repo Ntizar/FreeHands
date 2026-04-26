@@ -55,9 +55,14 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     gaze_tracker = GazeTracker()
     hand_tracker = HandTracker()
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))
+    gesture_thresholds = {
+        gesture: (threshold.stability_frames, threshold.confidence_min)
+        for gesture, threshold in profile.gesture_thresholds.items()
+    }
     stabilizer = GestureStabilizer(
         required_frames=DEFAULT_STABILITY_FRAMES,
         confidence_min=DEFAULT_GESTURE_CONFIDENCE,
+        per_gesture=gesture_thresholds,
     )
     fusion = MultimodalFusion(profile)
     dispatcher = ActionDispatcher()

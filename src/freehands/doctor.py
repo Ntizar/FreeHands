@@ -40,14 +40,19 @@ def run_doctor() -> int:
 
     # Camera
     try:
-        import cv2
-        cap = cv2.VideoCapture(0)
-        if cap.isOpened():
-            ret, _ = cap.read()
-            print(f"  [OK] Camera 0 reachable (frame={ret})")
-        else:
-            print("  [ERR] Camera 0 not available"); ok = False
-        cap.release()
+        import time
+        from .capture import Camera, list_available_cameras
+        cameras = list_available_cameras()
+        print(f"  [OK] Cameras detected: {cameras or 'none'}")
+        cam = Camera().start()
+        frame = None
+        for _ in range(10):
+            frame = cam.read()
+            if frame is not None:
+                break
+            time.sleep(0.05)
+        cam.stop()
+        print(f"  [OK] Camera 0 reachable (frame={frame is not None})")
     except Exception as e:
         print(f"  [ERR] OpenCV error: {e}"); ok = False
 

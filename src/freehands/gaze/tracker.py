@@ -7,7 +7,7 @@ generalises across small head movements.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -46,11 +46,24 @@ class GazeFeatures:
     confidence: float    # 0..1
 
 
+@dataclass
+class GazeDebug:
+    backend: str
+    face_detected: bool = False
+    landmark_count: int = 0
+    iris_detected: bool = False
+    confidence: float = 0.0
+    message: str = "Inicializando"
+    points: dict[str, tuple[float, float]] = field(default_factory=dict)
+    vector: list[float] = field(default_factory=list)
+
+
 class GazeTracker:
     """Wraps MediaPipe FaceMesh and yields per-frame :class:`GazeFeatures`."""
 
     def __init__(self) -> None:
         self._backend = "solutions" if _mp_face_mesh is not None else "tasks"
+        self.last_debug = GazeDebug(backend=self._backend)
         if _mp_face_mesh is not None:
             self._mesh = _mp_face_mesh.FaceMesh(
                 max_num_faces=1,
@@ -83,20 +96,29 @@ class GazeTracker:
     def extract(self, frame_bgr: np.ndarray) -> GazeFeatures | None:
         import cv2
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        debug = GazeDebug(backend=self._backend, message="Procesando frame")
         if self._backend == "solutions":
             result = self._mesh.process(rgb)
             if not result.multi_face_landmarks:
+                debug.message = "No se detecta cara"
+                self.last_debug = debug
                 return None
             lm = result.multi_face_landmarks[0].landmark
         else:
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             result = self._mesh.detect(image)
             if not result.face_landmarks:
+                debug.message = "No se detecta cara"
+                self.last_debug = debug
                 return None
             lm = result.face_landmarks[0]
         h, w = frame_bgr.shape[:2]
+        debug.face_detected = True
+        debug.landmark_count = len(lm)
 
         if len(lm) <= max(RIGHT_EYE_CORNERS):
+            debug.message = f"Cara detectada, pero faltan landmarks de ojos ({len(lm)})"
+            self.last_debug = debug
             return None
 
         def pt(i: int) -> np.ndarray:
@@ -112,6 +134,7 @@ class GazeTracker:
             left_iris = np.mean([pt(i) for i in LEFT_IRIS], axis=0)
             right_iris = np.mean([pt(i) for i in RIGHT_IRIS], axis=0)
             confidence = 1.0
+            debug.iris_detected = True
         else:
             left_iris = (l_outer + l_inner) / 2.0
             right_iris = (r_inner + r_outer) / 2.0
@@ -126,6 +149,19 @@ class GazeTracker:
         head = (nose - eye_mid) / max(np.linalg.norm(l_outer - r_outer), 1e-6)
 
         feats = np.concatenate([l_rel, r_rel, head])  # 6-d
+        debug.confidence = confidence
+        debug.message = "Ojos e iris detectados" if debug.iris_detected else "Ojos detectados sin iris fino"
+        debug.points = {
+            "left_outer": tuple(l_outer),
+            "left_inner": tuple(l_inner),
+            "right_inner": tuple(r_inner),
+            "right_outer": tuple(r_outer),
+            "left_iris": tuple(left_iris),
+            "right_iris": tuple(right_iris),
+            "nose": tuple(nose),
+        }
+        debug.vector = [round(float(v), 3) for v in feats]
+        self.last_debug = debug
         return GazeFeatures(vector=feats, confidence=confidence)
 
     def close(self) -> None:

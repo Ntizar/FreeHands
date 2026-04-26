@@ -39,3 +39,14 @@ def test_none_never_emits():
     s = GestureStabilizer(required_frames=3, confidence_min=0.5)
     s.update("none", 1.0); s.update("none", 1.0)
     assert s.update("none", 1.0) is None
+
+
+def test_per_gesture_thresholds_override_defaults():
+    s = GestureStabilizer(
+        required_frames=8,
+        confidence_min=0.95,
+        per_gesture={"pointing_up": (3, 0.7)},
+    )
+    assert s.update("pointing_up", 0.8) is None
+    assert s.update("pointing_up", 0.8) is None
+    assert s.update("pointing_up", 0.8) == "pointing_up"

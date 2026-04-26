@@ -11,12 +11,26 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..mediapipe_assets import ensure_model
+
 try:
     import mediapipe as mp
-    _mp_face_mesh = mp.solutions.face_mesh
-except Exception:  # pragma: no cover
+    _mp_solutions = getattr(mp, "solutions", None)
+    _mp_face_mesh = _mp_solutions.face_mesh if _mp_solutions is not None else None
+    _mp_error: Exception | None = None
+except Exception as exc:  # pragma: no cover
     mp = None
     _mp_face_mesh = None
+    _mp_error = exc
+
+try:
+    from mediapipe.tasks import python as mp_tasks
+    from mediapipe.tasks.python import vision as mp_vision
+    _mp_tasks_error: Exception | None = None
+except Exception as exc:  # pragma: no cover
+    mp_tasks = None
+    mp_vision = None
+    _mp_tasks_error = exc
 
 
 # MediaPipe FaceMesh iris and eye-corner landmarks
@@ -36,23 +50,54 @@ class GazeTracker:
     """Wraps MediaPipe FaceMesh and yields per-frame :class:`GazeFeatures`."""
 
     def __init__(self) -> None:
-        if _mp_face_mesh is None:
-            raise RuntimeError("mediapipe is required for GazeTracker")
-        self._mesh = _mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,         # enables iris landmarks
-            min_detection_confidence=0.5,
+        self._backend = "solutions" if _mp_face_mesh is not None else "tasks"
+        if _mp_face_mesh is not None:
+            self._mesh = _mp_face_mesh.FaceMesh(
+                max_num_faces=1,
+                refine_landmarks=True,         # enables iris landmarks
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            return
+
+        if mp is None or mp_tasks is None or mp_vision is None:
+            detail = f": {_mp_error or _mp_tasks_error}" if (_mp_error or _mp_tasks_error) else ""
+            raise RuntimeError(
+                "MediaPipe FaceMesh is required for GazeTracker" + detail +
+                ". Run: FreeHands.bat repair"
+            )
+
+        model_path = ensure_model("face_landmarker")
+        options = mp_vision.FaceLandmarkerOptions(
+            base_options=mp_tasks.BaseOptions(model_asset_path=str(model_path)),
+            running_mode=mp_vision.RunningMode.IMAGE,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
             min_tracking_confidence=0.5,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
         )
+        self._mesh = mp_vision.FaceLandmarker.create_from_options(options)
 
     def extract(self, frame_bgr: np.ndarray) -> GazeFeatures | None:
         import cv2
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        result = self._mesh.process(rgb)
-        if not result.multi_face_landmarks:
-            return None
-        lm = result.multi_face_landmarks[0].landmark
+        if self._backend == "solutions":
+            result = self._mesh.process(rgb)
+            if not result.multi_face_landmarks:
+                return None
+            lm = result.multi_face_landmarks[0].landmark
+        else:
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            result = self._mesh.detect(image)
+            if not result.face_landmarks:
+                return None
+            lm = result.face_landmarks[0]
         h, w = frame_bgr.shape[:2]
+
+        if len(lm) <= max(RIGHT_IRIS):
+            return None
 
         def pt(i: int) -> np.ndarray:
             return np.array([lm[i].x * w, lm[i].y * h])

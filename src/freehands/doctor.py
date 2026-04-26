@@ -1,6 +1,36 @@
 """Diagnostics: verify camera, microphone, and key dependencies."""
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
+
+
+def repair_dependencies() -> int:
+    """Install/reinstall runtime dependencies into the active Python env."""
+    root = Path(__file__).resolve().parents[2]
+    requirements = root / "requirements.txt"
+    print("FreeHands · repair")
+    print("=" * 50)
+    print(f"Python: {sys.executable}")
+    if not requirements.exists():
+        print(f"[ERR] requirements.txt not found at {requirements}")
+        return 1
+
+    commands = [
+        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+        [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall", "mediapipe"],
+        [sys.executable, "-m", "pip", "install", "-r", str(requirements)],
+        [sys.executable, "-m", "pip", "install", "-e", str(root)],
+    ]
+    for cmd in commands:
+        print("$ " + " ".join(cmd))
+        completed = subprocess.run(cmd, cwd=root)
+        if completed.returncode != 0:
+            print(f"[ERR] command failed with {completed.returncode}")
+            return completed.returncode
+    return run_doctor()
+
 
 def run_doctor() -> int:
     print("FreeHands · doctor")
@@ -21,12 +51,20 @@ def run_doctor() -> int:
     except Exception as e:
         print(f"  [ERR] OpenCV error: {e}"); ok = False
 
-    # MediaPipe
+    # MediaPipe trackers (legacy solutions or Tasks, depending on installed version)
     try:
-        import mediapipe  # noqa: F401
-        print("  [OK] MediaPipe importable")
+        from .gaze import GazeTracker
+        from .gestures import HandTracker
+
+        gaze = GazeTracker()
+        gaze.close()
+        print("  [OK] GazeTracker available")
+        hands = HandTracker()
+        hands.close()
+        print("  [OK] HandTracker available")
     except Exception as e:
-        print(f"  [ERR] MediaPipe missing: {e}"); ok = False
+        print(f"  [ERR] MediaPipe tracker missing/broken: {e}"); ok = False
+        print("       Run: FreeHands.bat repair")
 
     # PyQt6
     try:

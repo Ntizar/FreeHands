@@ -27,10 +27,12 @@ COOLDOWN_MS_AFTER_ACTION = 500
 PAUSE_GESTURE_HOLD_MS = 1000
 
 # ── Calibration minigame ───────────────────────────────────────────────────
+# Fast test profile: 10 clicks total. Later, raise SAMPLES_PER_POINT or add
+# more points for precision once the interaction loop feels good.
 CALIBRATION_POINTS = [
-    (0.05, 0.05), (0.5, 0.05), (0.95, 0.05),
-    (0.05, 0.5),  (0.5, 0.5),  (0.95, 0.5),
-    (0.05, 0.95), (0.5, 0.95), (0.95, 0.95),
-    (0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75),
+    (0.08, 0.10), (0.50, 0.10), (0.92, 0.10),
+    (0.08, 0.50), (0.50, 0.50), (0.92, 0.50),
+    (0.08, 0.90), (0.50, 0.90), (0.92, 0.90),
+    (0.50, 0.30),
 ]
-SAMPLES_PER_POINT = 3
+SAMPLES_PER_POINT = 1

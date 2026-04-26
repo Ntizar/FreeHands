@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--no-voice", action="store_true", help="Disable voice listener")
 
     p_check = sub.add_parser("doctor", help="Check camera / mic / dependencies")
+    p_repair = sub.add_parser("repair", help="Install/reinstall runtime dependencies")
 
     args = parser.parse_args(argv)
 
@@ -41,6 +42,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "doctor":
         from .doctor import run_doctor
         return run_doctor()
+    if args.cmd == "repair":
+        from .doctor import repair_dependencies
+        return repair_dependencies()
     return 1
 
 

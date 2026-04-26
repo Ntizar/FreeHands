@@ -18,12 +18,26 @@ from typing import Literal
 
 import numpy as np
 
+from ..mediapipe_assets import ensure_model
+
 try:
     import mediapipe as mp
-    _mp_hands = mp.solutions.hands
-except Exception:  # pragma: no cover
+    _mp_solutions = getattr(mp, "solutions", None)
+    _mp_hands = _mp_solutions.hands if _mp_solutions is not None else None
+    _mp_error: Exception | None = None
+except Exception as exc:  # pragma: no cover
     mp = None
     _mp_hands = None
+    _mp_error = exc
+
+try:
+    from mediapipe.tasks import python as mp_tasks
+    from mediapipe.tasks.python import vision as mp_vision
+    _mp_tasks_error: Exception | None = None
+except Exception as exc:  # pragma: no cover
+    mp_tasks = None
+    mp_vision = None
+    _mp_tasks_error = exc
 
 
 GestureId = Literal["thumb_up", "thumb_down", "pinch_open", "pinch_close",
@@ -47,28 +61,64 @@ class HandObservation:
 
 class HandTracker:
     def __init__(self) -> None:
-        if _mp_hands is None:
-            raise RuntimeError("mediapipe is required for HandTracker")
-        self._hands = _mp_hands.Hands(
-            max_num_hands=1,
-            min_detection_confidence=0.6,
-            min_tracking_confidence=0.6,
-        )
+        self._backend = "solutions" if _mp_hands is not None else "tasks"
+        if _mp_hands is not None:
+            self._hands = _mp_hands.Hands(
+                max_num_hands=1,
+                min_detection_confidence=0.6,
+                min_tracking_confidence=0.6,
+            )
+        elif mp is not None and mp_tasks is not None and mp_vision is not None:
+            model_path = ensure_model("gesture_recognizer")
+            options = mp_vision.GestureRecognizerOptions(
+                base_options=mp_tasks.BaseOptions(model_asset_path=str(model_path)),
+                running_mode=mp_vision.RunningMode.IMAGE,
+                num_hands=1,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            self._hands = mp_vision.GestureRecognizer.create_from_options(options)
+        else:
+            detail = f": {_mp_error or _mp_tasks_error}" if (_mp_error or _mp_tasks_error) else ""
+            raise RuntimeError("MediaPipe Hands/GestureRecognizer is required" + detail)
         self._prev_pinch_dist: float | None = None
 
     def detect(self, frame_bgr: np.ndarray) -> HandObservation:
         import cv2
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        result = self._hands.process(rgb)
-        if not result.multi_hand_landmarks:
+        if self._backend == "solutions":
+            result = self._hands.process(rgb)
+            if not result.multi_hand_landmarks:
+                self._prev_pinch_dist = None
+                return HandObservation("none", 0.0, None)
+            lm = result.multi_hand_landmarks[0].landmark
+            pts = np.array([[p.x, p.y, p.z] for p in lm])
+            gesture, conf = self._classify(pts)
+            return HandObservation(gesture, conf, pts)
+
+        image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = self._hands.recognize(image)
+        if not result.hand_landmarks:
             self._prev_pinch_dist = None
             return HandObservation("none", 0.0, None)
 
-        lm = result.multi_hand_landmarks[0].landmark
-        pts = np.array([[p.x, p.y, p.z] for p in lm])
-
+        pts = np.array([[p.x, p.y, p.z] for p in result.hand_landmarks[0]])
         gesture, conf = self._classify(pts)
+        if result.gestures and result.gestures[0]:
+            top = result.gestures[0][0]
+            mapped = self._map_task_gesture(top.category_name)
+            if mapped != "none" and float(top.score) >= 0.40:
+                gesture, conf = mapped, float(top.score)
         return HandObservation(gesture, conf, pts)
+
+    def _map_task_gesture(self, category: str) -> GestureId:
+        return {
+            "Thumb_Up": "thumb_up",
+            "Thumb_Down": "thumb_down",
+            "Open_Palm": "open_palm",
+            "Closed_Fist": "fist_pause",
+        }.get(category, "none")
 
     # ── classification ────────────────────────────────────────────────────
     def _classify(self, pts: np.ndarray) -> tuple[GestureId, float]:

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreeHands · Patitos</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css" />
+  <script src="assets/webgazer-loader.js" defer></script>
+</head>
+<body class="duck-body">
+  <header class="nav glass duck-nav">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">FreeHands</span>
+      <span class="brand-by">patitos</span>
+    </div>
+    <nav>
+      <a href="demo.html" class="btn btn-ghost">Demo</a>
+      <a href="index.html" class="btn btn-ghost">Volver</a>
+    </nav>
+  </header>
+
+  <main id="duck-game" class="duck-game">
+    <canvas id="duck-canvas"></canvas>
+    <video id="duck-video" autoplay muted playsinline></video>
+    <div class="duck-hud glass">
+      <strong id="duck-score">0 / 50</strong>
+      <span id="duck-status">Preparado</span>
+      <button id="duck-start" class="btn btn-primary">Iniciar</button>
+    </div>
+    <div id="duck-crosshair" class="duck-crosshair"></div>
+    <section id="duck-result" class="glass card duck-result hidden">
+      <h1 id="duck-title">Resultado</h1>
+      <p id="duck-copy" class="lead"></p>
+      <button id="duck-again" class="btn btn-accent">Repetir</button>
+    </section>
+  </main>
+
+  <script type="module" src="assets/duck-hunt.js"></script>
+</body>
+</html>

@@ -18,9 +18,17 @@ const ROUND = [
   { id: 'Open_Palm',   label: 'Mano abierta 🖐️',   binding: 'pause' },
   { id: 'Closed_Fist', label: 'Puño cerrado ✊',    binding: 'reset' },
 ];
-const HOLD_FRAMES = 12;        // ~0.4 s @ 30 fps
-const HOLD_CONFIDENCE = 0.65;
-const TIMEOUT_MS = 8000;       // per gesture
+const HOLD_FRAMES = 8;         // test mode: easier lock
+const HOLD_CONFIDENCE = 0.45;
+const TIMEOUT_MS = 12000;      // per gesture
+
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [0, 17], [17, 18], [18, 19], [19, 20],
+];
 
 let recognizer = null;
 let active = false;
@@ -62,30 +70,61 @@ async function ensureRecognizer() {
 }
 
 async function ensureVideo() {
-  // Reuse the preview <video> from the gaze demo if it has a stream
-  let v = $('webcam-preview');
-  if (!v || !v.srcObject) {
-    // Need our own stream
-    const stream = await navigator.mediaDevices.getUserMedia({
+  const sourcePreview = $('webcam-preview');
+  let stream = sourcePreview && sourcePreview.srcObject;
+  if (!stream) {
+    stream = await navigator.mediaDevices.getUserMedia({
       video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
       audio: false,
     });
-    if (!v) {
-      v = document.createElement('video');
-      v.id = 'webcam-preview';
-      v.autoplay = true;
-      v.muted = true;
-      v.playsInline = true;
-      v.className = 'webcam-preview';
-      document.body.appendChild(v);
-    }
-    v.srcObject = stream;
+    if (sourcePreview) sourcePreview.srcObject = stream;
   }
+  const v = $('gesture-video') || sourcePreview;
+  v.srcObject = stream || sourcePreview.srcObject;
+  v.muted = true;
+  v.playsInline = true;
+  await v.play().catch(() => {});
   if (v.readyState < 2) {
     await new Promise((res) => v.addEventListener('loadeddata', res, { once: true }));
   }
   video = v;
   return v;
+}
+
+function drawGestureFrame(out, top) {
+  const canvas = $('gesture-canvas');
+  const live = $('gesture-live');
+  if (!canvas || !video) return;
+  const w = video.videoWidth || 640;
+  const h = video.videoHeight || 480;
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  const landmarks = out.landmarks && out.landmarks[0];
+  if (landmarks && landmarks.length) {
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#FF7A1A';
+    ctx.fillStyle = '#1E5BFF';
+    for (const [a, b] of HAND_CONNECTIONS) {
+      ctx.beginPath();
+      ctx.moveTo(landmarks[a].x * w, landmarks[a].y * h);
+      ctx.lineTo(landmarks[b].x * w, landmarks[b].y * h);
+      ctx.stroke();
+    }
+    for (const lm of landmarks) {
+      ctx.beginPath();
+      ctx.arc(lm.x * w, lm.y * h, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (live) {
+    if (top) live.textContent = `${top.categoryName} · ${(top.score * 100 | 0)}%`;
+    else if (landmarks && landmarks.length) live.textContent = 'Mano detectada · sin gesto claro';
+    else live.textContent = 'No veo tu mano';
+  }
 }
 
 function paintProgress(ratio) {
@@ -137,6 +176,7 @@ async function detectOne(target, results, idx) {
 
     const out = recognizer.recognizeForVideo(video, ts);
     const top = out.gestures && out.gestures[0] && out.gestures[0][0];
+    drawGestureFrame(out, top);
     if (top && top.categoryName === target.id && top.score >= HOLD_CONFIDENCE) {
       held++;
       $('g-sub').textContent = `Detectado (${held}/${HOLD_FRAMES})`;

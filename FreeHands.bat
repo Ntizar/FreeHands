@@ -6,6 +6,7 @@ REM  Sin argumentos              -> menu interactivo.
 REM  FreeHands.bat run           -> arranca con usuario "Ntizar".
 REM  FreeHands.bat calibrate     -> mirada + gestos para "Ntizar".
 REM  FreeHands.bat gestures      -> solo gestos para "Ntizar".
+REM  FreeHands.bat repair        -> reinstala dependencias runtime.
 REM  FreeHands.bat <cmd> <user>  -> usa el usuario indicado.
 REM
 REM  En la primera ejecucion crea el venv e instala dependencias.
@@ -70,13 +71,17 @@ if errorlevel 1 (
 )
 
 REM -- Comprobacion final de dependencias core --------------------------
-python -c "import cv2, mediapipe, numpy, sklearn, PyQt6, pydantic, platformdirs" 2>nul
+python -c "import cv2, numpy, sklearn, PyQt6, pydantic, platformdirs; from freehands.gaze import GazeTracker; from freehands.gestures import HandTracker; g=GazeTracker(); g.close(); h=HandTracker(); h.close()" 2>nul
 if errorlevel 1 (
     echo.
-    echo [FreeHands] ERROR: faltan dependencias core dentro de .venv.
-    echo            Mira el log o ejecuta: FreeHands.bat doctor
-    echo            Si mediapipe falla, instala Python 3.11 y borra la carpeta .venv.
-    pause & exit /b 1
+    echo [FreeHands] GazeTracker/HandTracker no estan bien instalados. Reparando...
+    python -m freehands repair
+    if errorlevel 1 (
+        echo.
+        echo [FreeHands] ERROR: no se pudieron reparar las dependencias.
+        echo            Si mediapipe falla, instala Python 3.11 y borra la carpeta .venv.
+        pause & exit /b 1
+    )
 )
 
 REM -- Menu interactivo si no hay comando -------------------------------
@@ -90,8 +95,9 @@ if "%CMD%"=="" (
     echo   3^) Recalibrar solo mirada
     echo   4^) Recalibrar solo gestos
     echo   5^) Doctor (camara, micro, dependencias^)
-    echo   6^) Cambiar usuario
-    echo   7^) Salir
+    echo   6^) Reparar dependencias
+    echo   7^) Cambiar usuario
+    echo   8^) Salir
     echo.
     set /p CHOICE="  Elige una opcion [1]: "
     if "!CHOICE!"=="" set "CHOICE=1"
@@ -100,12 +106,13 @@ if "%CMD%"=="" (
     if "!CHOICE!"=="3" set "CMD=gaze"
     if "!CHOICE!"=="4" set "CMD=gestures"
     if "!CHOICE!"=="5" set "CMD=doctor"
-    if "!CHOICE!"=="6" (
+    if "!CHOICE!"=="6" set "CMD=repair"
+    if "!CHOICE!"=="7" (
         set /p USER="  Nuevo usuario: "
         if "!USER!"=="" set "USER=%DEFAULT_USER%"
         set "CMD=run"
     )
-    if "!CHOICE!"=="7" exit /b 0
+    if "!CHOICE!"=="8" exit /b 0
 )
 
 REM -- Ejecucion ---------------------------------------------------------
@@ -116,6 +123,9 @@ echo CMD=%CMD% USER=%USER%>> "%LOGFILE%"
 if /I "%CMD%"=="doctor" (
     echo [FreeHands] Ejecutando doctor...
     python -m freehands doctor >> "%LOGFILE%" 2>&1
+) else if /I "%CMD%"=="repair" (
+    echo [FreeHands] Reparando dependencias...
+    python -m freehands repair >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="calibrate" (
     echo [FreeHands] Calibrando mirada + gestos para usuario "%USER%"...
     python -m freehands calibrate --user "%USER%" >> "%LOGFILE%" 2>&1
@@ -137,6 +147,7 @@ if /I "%CMD%"=="doctor" (
     echo   FreeHands.bat gaze [usuario]
     echo   FreeHands.bat gestures [usuario]
     echo   FreeHands.bat doctor
+    echo   FreeHands.bat repair
     pause & exit /b 1
 )
 

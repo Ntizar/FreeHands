@@ -81,6 +81,11 @@
         <h2 id="g-prompt">Pulgar arriba 👍</h2>
         <p id="g-sub" class="lead">Mantén el gesto frente a la cámara…</p>
       </header>
+      <div class="gesture-camera-panel">
+        <video id="gesture-video" class="gesture-video" autoplay muted playsinline></video>
+        <canvas id="gesture-canvas" class="gesture-canvas"></canvas>
+        <div id="gesture-live" class="gesture-live">Esperando mano…</div>
+      </div>
       <div class="gesture-progress">
         <div id="g-bar" class="gesture-bar"></div>
       </div>
@@ -104,6 +109,6 @@
   </main>
 
   <script src="assets/demo.js" defer></script>
-  <script type="module" src="assets/gestures-v2.js"></script>
+  <script type="module" src="assets/gestures-v3.js"></script>
 </body>
 </html>

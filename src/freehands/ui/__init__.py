@@ -1,0 +1,2 @@
+from .theme import GLOBAL_STYLESHEET, PALETTE
+__all__ = ["GLOBAL_STYLESHEET", "PALETTE"]

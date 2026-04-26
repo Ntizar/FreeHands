@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FreeHands user profile",
+  "description": "Persistent per-user calibration & bindings written to ~/.freehands/profiles/{user_id}.json",
+  "type": "object",
+  "required": ["user_id"],
+  "properties": {
+    "user_id": { "type": "string" },
+    "calibration_date": { "type": "string", "format": "date" },
+    "gaze_model": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["ridge_regression"] },
+        "weights_x": { "type": "array", "items": { "type": "number" } },
+        "weights_y": { "type": "array", "items": { "type": "number" } },
+        "bias_x": { "type": "number" },
+        "bias_y": { "type": "number" },
+        "personal_offset": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        }
+      }
+    },
+    "dwell_time_ms": { "type": "integer", "minimum": 100, "maximum": 2000 },
+    "gesture_thresholds": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "confidence_min": { "type": "number", "minimum": 0, "maximum": 1 },
+          "stability_frames": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "gesture_bindings": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "voice_enabled": { "type": "boolean" },
+    "voice_language": { "type": "string" },
+    "magnification_enabled": { "type": "boolean" },
+    "magnification_factor": { "type": "number" }
+  }
+}

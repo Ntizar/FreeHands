@@ -64,17 +64,46 @@
     </div>
 
     <section id="result" class="glass card result hidden">
-      <h2>Calibración completada ✅</h2>
+      <h2>Calibración de mirada completada ✅</h2>
       <p>Puntos válidos: <b id="r-points">0</b></p>
       <p>Error medio estimado: <b id="r-rms">— px</b></p>
       <div class="cta-row">
-        <button id="restart" class="btn btn-accent">Repetir</button>
+        <button id="start-gestures" class="btn btn-primary">👋 Probar ronda de gestos</button>
+        <button id="restart" class="btn btn-ghost">Repetir mirada</button>
+        <a href="index.html" class="btn btn-ghost">Volver</a>
+      </div>
+      <p class="micro">Los gestos se detectan con <b>MediaPipe Tasks Vision</b> (en tu navegador, sin enviar nada).</p>
+    </section>
+
+    <!-- Phase 2: gesture round -->
+    <section id="gesture-arena" class="glass card gesture-arena hidden">
+      <header class="gesture-head">
+        <h2 id="g-prompt">Pulgar arriba 👍</h2>
+        <p id="g-sub" class="lead">Mantén el gesto frente a la cámara…</p>
+      </header>
+      <div class="gesture-progress">
+        <div id="g-bar" class="gesture-bar"></div>
+      </div>
+      <ul id="g-list" class="gesture-checklist"></ul>
+      <div class="cta-row">
+        <button id="g-skip" class="btn btn-ghost">Saltar gesto</button>
+        <button id="g-cancel" class="btn btn-ghost">Cancelar</button>
+      </div>
+      <div id="g-diag" class="diag hidden"></div>
+    </section>
+
+    <section id="gesture-result" class="glass card result hidden">
+      <h2>Ronda de gestos completada 🎉</h2>
+      <ul id="g-summary" class="gesture-checklist"></ul>
+      <div class="cta-row">
+        <button id="g-restart" class="btn btn-accent">Repetir gestos</button>
         <a href="index.html" class="btn btn-ghost">Volver a la home</a>
       </div>
-      <p class="micro">¿Quieres control real del SO con gestos y voz? Instala la <a href="https://github.com/Ntizar/FreeHands#-quick-start">app de escritorio</a>.</p>
+      <p class="micro">¿Quieres control real del SO? Instala la <a href="https://github.com/Ntizar/FreeHands#-quick-start">app de escritorio</a>.</p>
     </section>
   </main>
 
   <script src="assets/demo.js" defer></script>
+  <script type="module" src="assets/gestures.js"></script>
 </body>
 </html>

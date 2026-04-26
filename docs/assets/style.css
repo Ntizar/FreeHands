@@ -269,3 +269,17 @@ footer {
 .diag code{background:rgba(0,0,0,.06);padding:1px 6px;border-radius:6px;font-size:12.5px}
 .webcam-preview{position:fixed;right:18px;bottom:18px;width:160px;height:120px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,.6);box-shadow:0 8px 24px rgba(30,91,255,.18);z-index:5;background:#000}
 
+
+/* Phase 2 — gesture round */
+.gesture-arena{max-width:520px;margin:40px auto;padding:32px;display:flex;flex-direction:column;gap:18px}
+.gesture-head h2{margin:0 0 6px 0;font-size:32px}
+.gesture-progress{height:10px;border-radius:6px;background:rgba(30,91,255,.08);overflow:hidden}
+.gesture-bar{height:100%;width:0%;background:linear-gradient(90deg,#1E5BFF,#FF7A1A);transition:width .12s linear;border-radius:6px}
+.gesture-checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.gesture-item{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.6);font-size:15px}
+.gesture-item.in-progress{background:rgba(30,91,255,.12);border-color:rgba(30,91,255,.35)}
+.gesture-item.ok{background:rgba(46,160,67,.14);border-color:rgba(46,160,67,.35)}
+.gesture-item.fail{background:rgba(255,80,80,.12);border-color:rgba(255,80,80,.35)}
+.gesture-item.skip{opacity:.65}
+.gesture-item .badge{font-weight:600;font-size:14px}
+.gesture-item .badge i{font-style:italic;color:#445;font-weight:500;margin-left:6px}

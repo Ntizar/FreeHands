@@ -119,6 +119,25 @@ Puedes desactivarla con:
 python -m freehands run --user Ntizar --no-voice
 ```
 
+#### VibeVoice
+
+[microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) encaja como integración avanzada de voz:
+
+- **ASR**: posible backend alternativo para transcripciones largas, diarización y contexto personalizado.
+- **Realtime TTS**: candidato para feedback hablado del asistente (`pausado`, `calibración lista`, `acción cancelada`).
+
+Por defecto FreeHands usa `faster_whisper` porque es más ligero para comandos cortos en tiempo real. El perfil ya deja preparado el punto de extensión:
+
+```json
+{
+     "voice_asr_backend": "faster_whisper",
+     "voice_tts_backend": "none",
+     "voice_wake_words": ["freehands", "free hands", "ntizar"]
+}
+```
+
+`vibevoice_asr` queda marcado como backend experimental hasta integrar pesos/modelos, requisitos GPU y una ruta de inferencia suficientemente rápida.
+
 ---
 
 ## 🎮 Minijuego de calibración
@@ -149,8 +168,9 @@ Inspirado en `aim_botz` de Counter-Strike. Cuatro fases:
 ## 🗺️ Roadmap
 
 - [x] **Phase 1 — MVP** · gaze + 2 gestos (👍/👎) + cursor con dwell
-- [ ] **Phase 2** · pinch zoom + minijuego completo + perfiles + capa anti-FP
-- [ ] **Phase 3** · dictado por voz con Whisper local
+- [x] **Phase 2** · gestos web/escritorio + perfiles + capa anti-FP
+- [x] **Phase 3** · comandos de voz locales con faster-whisper
+- [ ] **Phase 3.5** · VibeVoice opcional: ASR avanzado + feedback hablado con Realtime TTS
 - [ ] **Phase 4** · detección de lengua + bindings configurables
 - [ ] **Phase 5** · empaquetado, GPU opcional, vídeo demo
 
@@ -169,6 +189,7 @@ Colores: **azul Ntizar `#1E5BFF`** + **naranja Ntizar `#FF7A1A`** sobre superfic
 - [alighazi288/Multimodal-System-Control](https://github.com/alighazi288/Multimodal-System-Control) — arquitectura concurrente
 - [Viral-Doshi/Gesture-Controlled-Virtual-Mouse](https://github.com/Viral-Doshi/Gesture-Controlled-Virtual-Mouse) — pinch zoom
 - [Kazuhito00/hand-gesture-recognition-using-mediapipe](https://github.com/Kazuhito00/hand-gesture-recognition-using-mediapipe) — pipeline de gestos custom
+- [microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) — ASR/TTS avanzado, posible backend opcional
 
 ---
 

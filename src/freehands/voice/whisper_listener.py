@@ -44,7 +44,12 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def parse_voice_command(text: str, *, require_wake_word: bool = True) -> str | None:
+def parse_voice_command(
+    text: str,
+    *,
+    require_wake_word: bool = True,
+    wake_words: tuple[str, ...] = WAKE_WORDS,
+) -> str | None:
     """Map a transcript to an action id.
 
     By default we require a wake word (``FreeHands`` or ``Ntizar``) to reduce
@@ -55,9 +60,10 @@ def parse_voice_command(text: str, *, require_wake_word: bool = True) -> str | N
     if not norm:
         return None
 
-    has_wake = any(w in norm for w in WAKE_WORDS)
+    wake_words = tuple(_normalise(w) for w in wake_words if _normalise(w)) or WAKE_WORDS
+    has_wake = any(w in norm for w in wake_words)
     if has_wake:
-        for wake in WAKE_WORDS:
+        for wake in wake_words:
             norm = norm.replace(wake, " ")
         norm = re.sub(r"\s+", " ", norm).strip()
 
@@ -78,12 +84,16 @@ class VoiceListener:
         chunk_seconds: float = 2.5,
         sample_rate: int = 16_000,
         require_wake_word: bool = True,
+        wake_words: tuple[str, ...] = WAKE_WORDS,
+        backend: str = "faster_whisper",
     ) -> None:
         self.language = language
         self.model_size = model_size
         self.chunk_seconds = chunk_seconds
         self.sample_rate = sample_rate
         self.require_wake_word = require_wake_word
+        self.wake_words = wake_words
+        self.backend = backend
         self.transcripts: queue.Queue[str] = queue.Queue()
         self.commands: queue.Queue[VoiceCommand] = queue.Queue()
         self.errors: queue.Queue[str] = queue.Queue()
@@ -94,6 +104,11 @@ class VoiceListener:
 
     def start(self) -> "VoiceListener":
         import sounddevice as sd
+
+        if self.backend != "faster_whisper":
+            self.errors.put(
+                f"Voice backend '{self.backend}' is experimental; using faster_whisper for now."
+            )
 
         if self._thread and self._thread.is_alive():
             return self
@@ -171,7 +186,11 @@ class VoiceListener:
                     continue
 
                 self.transcripts.put(text)
-                action = parse_voice_command(text, require_wake_word=self.require_wake_word)
+                action = parse_voice_command(
+                    text,
+                    require_wake_word=self.require_wake_word,
+                    wake_words=self.wake_words,
+                )
                 if action:
                     confidence = getattr(info, "language_probability", 1.0) or 1.0
                     self.commands.put(VoiceCommand(text=text, action=action, confidence=float(confidence)))

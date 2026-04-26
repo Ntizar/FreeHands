@@ -1,4 +1,4 @@
-from freehands.voice import parse_voice_command
+from freehands.voice import VoiceListener, parse_voice_command
 
 
 def test_voice_requires_wake_word_for_clicks() -> None:
@@ -19,3 +19,33 @@ def test_voice_spanish_action_synonyms() -> None:
     assert parse_voice_command("FreeHands scroll abajo") == "scroll_down"
     assert parse_voice_command("FreeHands sube") == "scroll_up"
     assert parse_voice_command("FreeHands cancelar") == "escape"
+
+
+def test_voice_custom_wake_words() -> None:
+    assert parse_voice_command("control clic", wake_words=("control",)) == "click"
+    assert parse_voice_command("Ntizar clic", wake_words=("control",)) is None
+
+
+def test_experimental_backend_keeps_faster_whisper_fallback_notice(monkeypatch) -> None:
+    class FakeStream:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+    import sys
+    import types
+
+    fake_sd = types.SimpleNamespace(InputStream=FakeStream)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+    monkeypatch.setattr(VoiceListener, "_loop", lambda self: None)
+
+    listener = VoiceListener(backend="vibevoice_asr")
+    listener.start()
+    try:
+        assert listener.drain_errors() == [
+            "Voice backend 'vibevoice_asr' is experimental; using faster_whisper for now."
+        ]
+    finally:
+        listener.stop()

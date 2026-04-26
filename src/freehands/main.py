@@ -70,7 +70,11 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     if voice_enabled and profile.voice_enabled:
         try:
-            voice_listener = VoiceListener(language=profile.voice_language).start()
+            voice_listener = VoiceListener(
+                language=profile.voice_language,
+                backend=profile.voice_asr_backend,
+                wake_words=tuple(profile.voice_wake_words),
+            ).start()
             print("Voice: enabled. Try: 'FreeHands clic', 'Ntizar zoom mas', 'pausa', 'reanudar'.")
         except Exception as exc:
             voice_listener = None

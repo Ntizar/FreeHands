@@ -1,6 +1,7 @@
 """Diagnostics: verify camera, microphone, and key dependencies."""
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +39,21 @@ def run_doctor() -> int:
 
     ok = True
 
+    # MediaPipe trackers (legacy solutions or Tasks, depending on installed version)
+    try:
+        from .gaze import GazeTracker
+        from .gestures import HandTracker
+
+        gaze = GazeTracker()
+        gaze.close()
+        print("  [OK] GazeTracker available")
+        hands = HandTracker()
+        hands.close()
+        print("  [OK] HandTracker available")
+    except Exception as e:
+        print(f"  [ERR] MediaPipe tracker missing/broken: {e}"); ok = False
+        print("       Run: FreeHands.bat repair")
+
     # Camera
     try:
         import time
@@ -55,21 +71,6 @@ def run_doctor() -> int:
         print(f"  [OK] Camera 0 reachable (frame={frame is not None})")
     except Exception as e:
         print(f"  [ERR] OpenCV error: {e}"); ok = False
-
-    # MediaPipe trackers (legacy solutions or Tasks, depending on installed version)
-    try:
-        from .gaze import GazeTracker
-        from .gestures import HandTracker
-
-        gaze = GazeTracker()
-        gaze.close()
-        print("  [OK] GazeTracker available")
-        hands = HandTracker()
-        hands.close()
-        print("  [OK] HandTracker available")
-    except Exception as e:
-        print(f"  [ERR] MediaPipe tracker missing/broken: {e}"); ok = False
-        print("       Run: FreeHands.bat repair")
 
     # PyQt6
     try:
@@ -89,7 +90,8 @@ def run_doctor() -> int:
 
     # Whisper (optional, Phase 3 voice)
     try:
-        import faster_whisper  # noqa: F401
+        if importlib.util.find_spec("faster_whisper") is None:
+            raise ImportError("module not installed")
         print("  [OK] faster-whisper importable")
     except Exception as e:
         print(f"  [!] faster-whisper not available: {e}")

@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..config import (
+    CAMERA_INDEX,
     DEFAULT_DWELL_MS,
     DEFAULT_GESTURE_CONFIDENCE,
     DEFAULT_STABILITY_FRAMES,
@@ -37,6 +38,7 @@ class Profile(BaseModel):
     gesture_calibrated_at: str | None = None
     gesture_calibration_results: dict[str, dict[str, float | int | bool]] = Field(default_factory=dict)
     gaze_model: GazeModel = Field(default_factory=GazeModel)
+    camera_index: int = CAMERA_INDEX
     dwell_time_ms: int = DEFAULT_DWELL_MS
     gesture_thresholds: dict[str, GestureThreshold] = Field(
         default_factory=lambda: {

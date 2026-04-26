@@ -51,7 +51,11 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     screen = app.primaryScreen().geometry()
 
-    camera = Camera().start()
+    try:
+        camera = Camera(profile.camera_index).start()
+    except Exception as exc:
+        print(f"[FreeHands] No se pudo abrir la camara {profile.camera_index}: {exc}. Usando camara 0.")
+        camera = Camera().start()
     gaze_tracker = GazeTracker()
     hand_tracker = HandTracker()
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))

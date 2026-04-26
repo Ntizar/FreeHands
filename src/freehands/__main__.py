@@ -18,6 +18,9 @@ def main(argv: list[str] | None = None) -> int:
     p_cal_gestures = sub.add_parser("calibrate-gestures", help="Recalibrate only hand gestures")
     p_cal_gestures.add_argument("--user", required=True, help="Profile id (e.g. 'Ntizar')")
 
+    p_camera = sub.add_parser("camera", help="Select and save the preferred camera")
+    p_camera.add_argument("--user", required=True, help="Profile id (e.g. 'Ntizar')")
+
     p_run = sub.add_parser("run", help="Start the multimodal control system")
     p_run.add_argument("--user", required=True, help="Profile id to load")
     p_run.add_argument("--no-voice", action="store_true", help="Disable voice listener")
@@ -36,6 +39,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "calibrate-gestures":
         from .ui.calibration_game import run_gesture_calibration
         return run_gesture_calibration(user_id=args.user)
+    if args.cmd == "camera":
+        from .ui.camera_selector import run_camera_selector
+        return run_camera_selector(user_id=args.user)
     if args.cmd == "run":
         from .main import run_system
         return run_system(user_id=args.user, voice_enabled=not args.no_voice)

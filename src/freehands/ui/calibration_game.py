@@ -22,7 +22,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Callable, Literal
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -117,13 +117,20 @@ class _Plan:
 class AimTrainer(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal(list)   # list[CalibrationSample]
 
-    def __init__(self, camera: Camera, tracker: GazeTracker, hand_tracker: HandTracker | None = None) -> None:
+    def __init__(
+        self,
+        camera: Camera,
+        tracker: GazeTracker,
+        hand_tracker: HandTracker | None = None,
+        on_camera_changed: Callable[[int], None] | None = None,
+    ) -> None:
         super().__init__()
         self.setObjectName("NtizarPage")
         self.setMouseTracking(True)
         self._camera = camera
         self._tracker = tracker
         self._hand_tracker = hand_tracker
+        self._on_camera_changed = on_camera_changed
         self._samples: list[CalibrationSample] = []
         self._target_radius = 26
         self._plan = self._build_plan()
@@ -133,7 +140,7 @@ class AimTrainer(QtWidgets.QWidget):
         self._status_message = "Buscando tu mirada..."
         self._status_kind = "warn"
         self._preview_image: np.ndarray | None = None
-        self._available_cameras = list_available_cameras()
+        self._available_cameras = list_available_cameras(max_index=8)
         if self._camera.index not in self._available_cameras:
             self._available_cameras.insert(0, self._camera.index)
         self._confirm_hold = 0
@@ -192,6 +199,8 @@ class AimTrainer(QtWidgets.QWidget):
                 self._camera.switch(next_index)
                 self._preview_image = None
                 self._latest_vector = None
+                if self._on_camera_changed is not None:
+                    self._on_camera_changed(next_index)
                 self._set_status(f"Cambiado a camara {next_index}. Esperando ojos...", "warn")
                 return
             except Exception as exc:
@@ -400,11 +409,17 @@ class _GestureStat:
 class GestureTrainer(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal(list)   # list[_GestureStat]
 
-    def __init__(self, camera: Camera, hand_tracker: HandTracker) -> None:
+    def __init__(
+        self,
+        camera: Camera,
+        hand_tracker: HandTracker,
+        on_camera_changed: Callable[[int], None] | None = None,
+    ) -> None:
         super().__init__()
         self.setObjectName("NtizarPage")
         self._camera = camera
         self._hands = hand_tracker
+        self._on_camera_changed = on_camera_changed
         self._stats: list[_GestureStat] = []
         self._idx = 0
         self._held = 0
@@ -414,7 +429,7 @@ class GestureTrainer(QtWidgets.QWidget):
         self._last_confidence = 0.0
         self._last_hands: list[np.ndarray] = []
         self._preview_image: np.ndarray | None = None
-        self._available_cameras = list_available_cameras()
+        self._available_cameras = list_available_cameras(max_index=8)
         if self._camera.index not in self._available_cameras:
             self._available_cameras.insert(0, self._camera.index)
 
@@ -469,6 +484,8 @@ class GestureTrainer(QtWidgets.QWidget):
                 self._camera.switch(next_index)
                 self._preview_image = None
                 self._last_hands = []
+                if self._on_camera_changed is not None:
+                    self._on_camera_changed(next_index)
                 self._last_obs_label = f"camara {next_index}"
                 self.update()
                 return
@@ -648,10 +665,14 @@ class CalibrationWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("FreeHands · Calibración")
         self.showFullScreen()
 
-        self._camera = Camera().start()
         self._tracker: GazeTracker | None = None
         self._hands: HandTracker | None = None
         self._profile = get_or_create_profile(self.user_id)
+        try:
+            self._camera = Camera(self._profile.camera_index).start()
+        except Exception:
+            self._camera = Camera().start()
+            self._save_camera_index(self._camera.index)
         self._gaze_rms: float | None = None
 
         self._stack = QtWidgets.QStackedWidget()
@@ -660,6 +681,10 @@ class CalibrationWindow(QtWidgets.QMainWindow):
         self.welcome = WelcomeScreen(user_id, mode)
         self.welcome.start_clicked.connect(self._start_selected_mode)
         self._stack.addWidget(self.welcome)
+
+    def _save_camera_index(self, index: int) -> None:
+        self._profile.camera_index = index
+        save_profile(self._profile)
 
     def _start_selected_mode(self) -> None:
         if self.mode == "gestures":
@@ -682,7 +707,7 @@ class CalibrationWindow(QtWidgets.QMainWindow):
             self._hands = HandTracker()
         except Exception:
             self._hands = None
-        self.aim = AimTrainer(self._camera, self._tracker, self._hands)
+        self.aim = AimTrainer(self._camera, self._tracker, self._hands, self._save_camera_index)
         self.aim.finished.connect(self._after_aim)
         self._stack.addWidget(self.aim)
         self._stack.setCurrentWidget(self.aim)
@@ -726,7 +751,7 @@ class CalibrationWindow(QtWidgets.QMainWindow):
             )
             self.close(); return
 
-        self.gestures = GestureTrainer(self._camera, self._hands)
+        self.gestures = GestureTrainer(self._camera, self._hands, self._save_camera_index)
         self.gestures.finished.connect(self._finish)
         self._stack.addWidget(self.gestures)
         self._stack.setCurrentWidget(self.gestures)

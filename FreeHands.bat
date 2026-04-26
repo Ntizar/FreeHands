@@ -6,6 +6,7 @@ REM  Sin argumentos              -> menu interactivo.
 REM  FreeHands.bat run           -> activa FreeHands con usuario "Ntizar".
 REM  FreeHands.bat calibrate     -> mirada + gestos para "Ntizar".
 REM  FreeHands.bat gestures      -> solo gestos para "Ntizar".
+REM  FreeHands.bat camera        -> selecciona camara para "Ntizar".
 REM  FreeHands.bat repair        -> reinstala dependencias runtime.
 REM  FreeHands.bat <cmd> <user>  -> usa el usuario indicado.
 REM
@@ -95,10 +96,11 @@ if "%CMD%"=="" (
     echo   2^) Calibrar todo (mirada + gestos^)
     echo   3^) Recalibrar solo mirada
     echo   4^) Recalibrar solo gestos
-    echo   5^) Doctor (camara, micro, dependencias^)
-    echo   6^) Reparar dependencias
-    echo   7^) Cambiar usuario
-    echo   8^) Salir
+    echo   5^) Seleccionar camara
+    echo   6^) Doctor (camara, micro, dependencias^)
+    echo   7^) Reparar dependencias
+    echo   8^) Cambiar usuario
+    echo   9^) Salir
     echo.
     set /p CHOICE="  Elige una opcion [1]: "
     if "!CHOICE!"=="" set "CHOICE=1"
@@ -106,14 +108,15 @@ if "%CMD%"=="" (
     if "!CHOICE!"=="2" set "CMD=calibrate"
     if "!CHOICE!"=="3" set "CMD=gaze"
     if "!CHOICE!"=="4" set "CMD=gestures"
-    if "!CHOICE!"=="5" set "CMD=doctor"
-    if "!CHOICE!"=="6" set "CMD=repair"
-    if "!CHOICE!"=="7" (
+    if "!CHOICE!"=="5" set "CMD=camera"
+    if "!CHOICE!"=="6" set "CMD=doctor"
+    if "!CHOICE!"=="7" set "CMD=repair"
+    if "!CHOICE!"=="8" (
         set /p USER="  Nuevo usuario: "
         if "!USER!"=="" set "USER=%DEFAULT_USER%"
         set "CMD=run"
     )
-    if "!CHOICE!"=="8" exit /b 0
+    if "!CHOICE!"=="9" exit /b 0
 )
 
 REM -- Ejecucion ---------------------------------------------------------
@@ -127,6 +130,9 @@ if /I "%CMD%"=="doctor" (
 ) else if /I "%CMD%"=="repair" (
     echo [FreeHands] Reparando dependencias...
     python -m freehands repair >> "%LOGFILE%" 2>&1
+) else if /I "%CMD%"=="camera" (
+    echo [FreeHands] Seleccionando camara para usuario "%USER%"...
+    python -m freehands camera --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="calibrate" (
     echo [FreeHands] Calibrando mirada + gestos para usuario "%USER%"...
     python -m freehands calibrate --user "%USER%" >> "%LOGFILE%" 2>&1
@@ -147,6 +153,7 @@ if /I "%CMD%"=="doctor" (
     echo   FreeHands.bat calibrate [usuario]
     echo   FreeHands.bat gaze [usuario]
     echo   FreeHands.bat gestures [usuario]
+    echo   FreeHands.bat camera [usuario]
     echo   FreeHands.bat doctor
     echo   FreeHands.bat repair
     pause & exit /b 1

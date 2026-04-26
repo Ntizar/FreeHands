@@ -8,7 +8,7 @@ from os import name as os_name
 import cv2
 import numpy as np
 
-from ..config import CAMERA_INDEX, FRAME_HEIGHT, FRAME_WIDTH
+from ..config import CAMERA_INDEX
 
 
 @dataclass
@@ -28,14 +28,12 @@ class Camera:
 
     @staticmethod
     def _open_capture(index: int) -> cv2.VideoCapture:
-        for backend in _candidate_backends():
+        for backend in _capture_backends():
             cap = cv2.VideoCapture(index, backend)
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
             if not cap.isOpened():
                 cap.release()
                 continue
-            for _ in range(5):
+            for _ in range(3):
                 ok, _ = cap.read()
                 if ok:
                     return cap
@@ -87,12 +85,12 @@ class Camera:
 def list_available_cameras(max_index: int = 4) -> list[int]:
     found: list[int] = []
     for index in range(max_index):
-        for backend in _candidate_backends():
+        for backend in _probe_backends():
             cap = cv2.VideoCapture(index, backend)
             ok = False
             try:
                 if cap.isOpened():
-                    for _ in range(3):
+                    for _ in range(1):
                         ok, _ = cap.read()
                         if ok:
                             break
@@ -104,10 +102,19 @@ def list_available_cameras(max_index: int = 4) -> list[int]:
     return found
 
 
-def _candidate_backends() -> list[int]:
+def _capture_backends() -> list[int]:
     if os_name != "nt":
         return [cv2.CAP_ANY]
-    backends = [cv2.CAP_MSMF, cv2.CAP_DSHOW, cv2.CAP_ANY]
+    return _unique_backends([cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY])
+
+
+def _probe_backends() -> list[int]:
+    if os_name != "nt":
+        return [cv2.CAP_ANY]
+    return _unique_backends([cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY])
+
+
+def _unique_backends(backends: list[int]) -> list[int]:
     unique: list[int] = []
     for backend in backends:
         if backend not in unique:

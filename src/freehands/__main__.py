@@ -10,7 +10,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_cal = sub.add_parser("calibrate", help="Run the aim-trainer calibration minigame")
-    p_cal.add_argument("--user", required=True, help="Profile id (e.g. 'luis')")
+    p_cal.add_argument("--user", required=True, help="Profile id (e.g. 'Ntizar')")
 
     p_run = sub.add_parser("run", help="Start the multimodal control system")
     p_run.add_argument("--user", required=True, help="Profile id to load")

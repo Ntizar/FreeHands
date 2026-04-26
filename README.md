@@ -65,11 +65,17 @@ Stack: `Python 3.11+` · `OpenCV` · `MediaPipe` · `faster-whisper` · `PyQt6` 
 
 ### Windows · doble-click (recomendado)
 
-| Archivo | Qué hace |
-|---------|----------|
-| [calibrate.bat](calibrate.bat) | Crea el venv si no existe, instala deps y lanza la calibración del usuario `luis` |
-| [run.bat](run.bat) | Arranca el sistema con el perfil `luis` |
-| [freehands.bat](freehands.bat) `[calibrate\|run\|doctor]` `[usuario]` | Launcher genérico |
+Sólo hay un launcher: **[FreeHands.bat](FreeHands.bat)**.
+
+```
+FreeHands.bat                       (menú interactivo)
+FreeHands.bat run                   (arranca el sistema, usuario por defecto: Ntizar)
+FreeHands.bat calibrate             (mirada + ronda de gestos)
+FreeHands.bat run otro_usuario      (otro perfil)
+```
+
+Crea el `.venv`, instala dependencias la primera vez y, si el usuario no tiene
+perfil, abre la calibración automáticamente.
 
 ### Manual (cualquier SO)
 
@@ -80,14 +86,38 @@ python -m venv .venv
 .\.venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 
-python -m freehands calibrate --user luis
-python -m freehands run --user luis
+python -m freehands calibrate --user Ntizar
+python -m freehands run --user Ntizar
 ```
 
 ### Demo web (sin instalar nada)
 
 Abre **[ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)** → *Probar demo*.
 Usa **WebGazer.js** y todo el procesamiento ocurre en tu navegador.
+
+### Voz (Phase 3 local)
+
+La voz se activa por defecto al ejecutar el sistema local. Para evitar falsos positivos,
+los comandos de acción usan palabra de activación: `FreeHands` o `Ntizar`.
+
+Ejemplos:
+
+```
+FreeHands clic
+Ntizar doble clic
+FreeHands botón derecho
+Ntizar zoom más
+Ntizar zoom menos
+FreeHands scroll abajo
+pausa
+reanudar
+```
+
+Puedes desactivarla con:
+
+```bash
+python -m freehands run --user Ntizar --no-voice
+```
 
 ---
 
@@ -96,8 +126,8 @@ Usa **WebGazer.js** y todo el procesamiento ocurre en tu navegador.
 Inspirado en `aim_botz` de Counter-Strike. Cuatro fases:
 
 1. **Calibración de mirada** — 9-13 puntos, 3 muestras cada uno → entrena un modelo de **ridge regression** personalizado.
-2. **Tiro al plato con gestos** — rondas separadas para `click`, `cancel`, `zoom_in`, `zoom_out`, `tongue_out`. Mide tasa de éxito y latencia.
-3. **Combos** — ajusta el `dwell_time_ms` óptimo del usuario (rango 250-1000 ms).
+2. **Ronda de gestos** — `thumb_up`, `thumb_down`, `pinch_close`, `fist_pause`; ajusta umbrales por perfil.
+3. **Voz local** — comandos en español con wake word (`FreeHands` / `Ntizar`) usando faster-whisper.
 4. **Validación final** — tareas reales sin ratón. Si el éxito < 80 %, sugiere recalibrar.
 
 ---

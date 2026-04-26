@@ -171,15 +171,20 @@
   }
 
   // ── Wait for webgazer.js script to load ────────────────────────────
-  function waitForWebGazer(timeoutMs = 8000) {
+  function waitForWebGazer(timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
       if (window.webgazer) return resolve();
       const t0 = Date.now();
       const timer = setInterval(() => {
         if (window.webgazer) { clearInterval(timer); resolve(); }
+        else if (window.__webgazerLoadError) {
+          clearInterval(timer);
+          reject(new Error(window.__webgazerLoadError));
+        }
         else if (Date.now() - t0 > timeoutMs) {
           clearInterval(timer);
-          reject(new Error('No se ha podido cargar WebGazer.js (¿adblocker o sin red?). Mira la consola del navegador (F12).'));
+          reject(new Error('No se ha podido cargar WebGazer.js (¿adblocker o sin red?). ' +
+            'Mira la consola del navegador (F12) para ver qué CDN ha fallado.'));
         }
       }, 80);
     });

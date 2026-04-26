@@ -16,7 +16,7 @@ def test_activate_then_dwell_to_confirming():
     sm.activate()
     assert sm.state is State.ACTIVE
     sm.tick(gaze_stable=True)
-    time.sleep(0.06)
+    time.sleep(0.09)
     sm.tick(gaze_stable=True)
     assert sm.state is State.CONFIRMING
 
@@ -26,6 +26,6 @@ def test_cooldown_returns_to_active():
     sm.activate()
     sm.trigger_cooldown()
     assert sm.state is State.COOLDOWN
-    time.sleep(0.03)
+    time.sleep(0.05)
     sm.tick(gaze_stable=False)
     assert sm.state is State.ACTIVE

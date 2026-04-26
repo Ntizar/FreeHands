@@ -2,7 +2,7 @@
 
 Usage::
 
-    python -m freehands calibrate --user luis
+    python -m freehands calibrate --user Ntizar
 
 Workflow
 --------

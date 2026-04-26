@@ -44,6 +44,13 @@ def run_doctor() -> int:
     except Exception as e:
         print(f"  [!] Audio not available: {e}")
 
+    # Whisper (optional, Phase 3 voice)
+    try:
+        import faster_whisper  # noqa: F401
+        print("  [✓] faster-whisper importable")
+    except Exception as e:
+        print(f"  [!] faster-whisper not available: {e}")
+
     print("=" * 50)
     print("OK" if ok else "Issues detected")
     return 0 if ok else 1

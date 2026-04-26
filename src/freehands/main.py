@@ -9,11 +9,12 @@ from PyQt6 import QtCore, QtWidgets
 from .actions import ActionDispatcher
 from .capture import Camera
 from .config import DEFAULT_GESTURE_CONFIDENCE, DEFAULT_STABILITY_FRAMES, TARGET_FPS
-from .fusion import MultimodalFusion
+from .fusion import MultimodalFusion, State
 from .gaze import GazeRegressor, GazeTracker
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import load_profile
 from .ui.overlay import GazeOverlay
+from .voice import VoiceListener
 
 
 def run_system(user_id: str, voice_enabled: bool = True) -> int:
@@ -60,11 +61,35 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     )
     fusion = MultimodalFusion(profile)
     dispatcher = ActionDispatcher()
+    voice_listener: VoiceListener | None = None
 
     overlay = GazeOverlay()
     overlay.show()
 
     fusion.sm.activate()  # start in ACTIVE; fist gesture toggles back to IDLE
+
+    if voice_enabled and profile.voice_enabled:
+        try:
+            voice_listener = VoiceListener(language=profile.voice_language).start()
+            print("Voice: enabled. Try: 'FreeHands clic', 'Ntizar zoom mas', 'pausa', 'reanudar'.")
+        except Exception as exc:
+            voice_listener = None
+            print(f"Voice: disabled ({exc})")
+
+    def handle_voice_action(action: str, cursor: tuple[int, int] | None) -> None:
+        if action == "toggle_pause":
+            fusion.sm.pause()
+            overlay.flash_action("voice: pause")
+            return
+        if action == "resume":
+            fusion.sm.activate()
+            overlay.flash_action("voice: resume")
+            return
+        if fusion.sm.state == State.IDLE:
+            overlay.flash_action("voice ignored: paused")
+            return
+        if dispatcher.execute(action, at_xy=cursor):
+            overlay.flash_action(f"voice: {action}")
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
@@ -90,6 +115,13 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             if result.fired_action not in {"toggle_pause", "resume"}:
                 dispatcher.execute(result.fired_action, at_xy=result.cursor_xy)
 
+        if voice_listener is not None:
+            for err in voice_listener.drain_errors():
+                print(f"[voice] {err}")
+            for cmd in voice_listener.drain_commands():
+                print(f"[voice] {cmd.text!r} -> {cmd.action}")
+                handle_voice_action(cmd.action, result.cursor_xy)
+
     timer = QtCore.QTimer()
     timer.timeout.connect(tick)
     timer.start(int(1000 / TARGET_FPS))
@@ -100,12 +132,15 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         camera.stop()
         gaze_tracker.close()
         hand_tracker.close()
+        if voice_listener is not None:
+            voice_listener.stop()
 
     app.aboutToQuit.connect(cleanup)
 
     print(f"FreeHands running for user '{user_id}'. "
           f"Move mouse to a screen corner (PyAutoGUI failsafe) to abort.")
-    print(f"Voice: {'enabled' if voice_enabled else 'disabled'} (Phase 3 — stub).")
+    if not voice_enabled or not profile.voice_enabled:
+        print("Voice: disabled.")
     print(f"Loaded profile dwell={profile.dwell_time_ms}ms, "
           f"bindings={profile.gesture_bindings}")
     _ = time.monotonic()  # silence unused-import in some linters

@@ -18,6 +18,8 @@
     result:   $('result'),
     rPoints:  $('r-points'),
     rRms:     $('r-rms'),
+    diag:     $('diag'),
+    preview:  $('webcam-preview'),
   };
 
   const NORMALIZED_POINTS = [
@@ -31,10 +33,75 @@
 
   let plan = [];
   let idx = 0;
-  let errors = []; // distances (px) between predicted gaze and clicked target
+  let errors = [];
   let webgazerReady = false;
+  let cameraStream = null;
 
-  // Build a randomized target plan in screen pixels.
+  // ── Diagnostics box ────────────────────────────────────────────────
+  function showDiag(html, kind = 'info') {
+    ui.diag.classList.remove('hidden');
+    ui.diag.className = `diag diag-${kind}`;
+    ui.diag.innerHTML = html;
+  }
+  function clearDiag() { ui.diag.classList.add('hidden'); ui.diag.innerHTML = ''; }
+
+  // ── Environment checks ─────────────────────────────────────────────
+  function envOk() {
+    const issues = [];
+    if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
+      issues.push('Tu navegador no soporta <code>getUserMedia</code>. Usa Chrome / Edge / Firefox / Safari recientes.');
+    }
+    if (location.protocol !== 'https:' &&
+        location.hostname !== 'localhost' &&
+        location.hostname !== '127.0.0.1') {
+      issues.push('La página debe servirse por <b>HTTPS</b> o <b>localhost</b> para acceder a la webcam. ' +
+                  'URL actual: <code>' + location.href + '</code>');
+    }
+    return issues;
+  }
+
+  function describeCameraError(err) {
+    const name = err && err.name;
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      return 'Has <b>denegado el permiso</b> de cámara. Pulsa el icono del candado en la barra de direcciones → <i>Permisos del sitio</i> → permite la <b>Cámara</b> y recarga.';
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return 'No se ha encontrado ninguna <b>webcam</b> conectada.';
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      return 'La webcam la está usando otra app (Zoom, Teams, OBS, otra pestaña…). Ciérrala y vuelve a probar.';
+    }
+    if (name === 'OverconstrainedError') {
+      return 'Tu cámara no soporta la configuración pedida.';
+    }
+    if (name === 'SecurityError') {
+      return 'Bloqueo de seguridad del navegador. Asegúrate de cargar la página desde <b>https://</b>.';
+    }
+    return 'Error desconocido al acceder a la cámara: <code>' + (err && err.message || name || err) + '</code>';
+  }
+
+  async function requestCamera() {
+    const issues = envOk();
+    if (issues.length) {
+      const e = new Error(issues.map(i => '• ' + i).join('<br/>'));
+      e.name = 'EnvError';
+      throw e;
+    }
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      audio: false,
+    });
+    return cameraStream;
+  }
+
+  function stopCamera() {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(t => t.stop());
+      cameraStream = null;
+    }
+  }
+
+  // ── Aim-trainer plan ───────────────────────────────────────────────
   function buildPlan() {
     const w = window.innerWidth, h = window.innerHeight;
     const margin = 90;
@@ -44,7 +111,6 @@
       const py = Math.round(margin + ny * (h - 2 * margin));
       for (let i = 0; i < SAMPLES_PER_POINT; i++) pts.push([px, py]);
     }
-    // Fisher-Yates shuffle
     for (let i = pts.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [pts[i], pts[j]] = [pts[j], pts[i]];
@@ -63,7 +129,7 @@
     ui.target.style.left = `${x}px`;
     ui.target.style.top  = `${y}px`;
     ui.target.classList.remove('hidden');
-    updateHUD('CLICK EN EL PUNTO');
+    updateHUD('CLIC EN EL PUNTO');
   }
 
   function onTargetClick(ev) {
@@ -71,14 +137,16 @@
     const dx = ev.clientX - tx, dy = ev.clientY - ty;
     if (dx * dx + dy * dy > HIT_RADIUS_PX * HIT_RADIUS_PX) return;
 
-    // Use the latest webgazer prediction to measure error
     if (window.webgazer && webgazerReady) {
-      window.webgazer.getCurrentPrediction().then((pred) => {
-        if (pred && typeof pred.x === 'number') {
-          const ex = pred.x - tx, ey = pred.y - ty;
-          errors.push(Math.hypot(ex, ey));
-        }
-      }).catch(() => {});
+      try {
+        const got = window.webgazer.getCurrentPrediction();
+        Promise.resolve(got).then((pred) => {
+          if (pred && typeof pred.x === 'number') {
+            const ex = pred.x - tx, ey = pred.y - ty;
+            errors.push(Math.hypot(ex, ey));
+          }
+        }).catch(() => {});
+      } catch (_) {}
     }
 
     idx++;
@@ -88,11 +156,7 @@
   function finish() {
     ui.target.classList.add('hidden');
     updateHUD('FINALIZADO');
-    if (window.webgazer) {
-      try { window.webgazer.showVideoPreview(false); } catch (_) {}
-      try { window.webgazer.pause(); } catch (_) {}
-    }
-    // Hide arena, show result
+    if (window.webgazer) { try { window.webgazer.pause(); } catch (_) {} }
     setTimeout(() => {
       ui.arena.classList.add('hidden');
       ui.result.classList.remove('hidden');
@@ -106,11 +170,23 @@
     }, 250);
   }
 
-  function startWebGazer() {
-    if (typeof window.webgazer === 'undefined') {
-      alert('No se ha podido cargar WebGazer.js (¿bloqueado por la red?). Revisa la consola.');
-      return Promise.reject('webgazer missing');
-    }
+  // ── Wait for webgazer.js script to load ────────────────────────────
+  function waitForWebGazer(timeoutMs = 8000) {
+    return new Promise((resolve, reject) => {
+      if (window.webgazer) return resolve();
+      const t0 = Date.now();
+      const timer = setInterval(() => {
+        if (window.webgazer) { clearInterval(timer); resolve(); }
+        else if (Date.now() - t0 > timeoutMs) {
+          clearInterval(timer);
+          reject(new Error('No se ha podido cargar WebGazer.js (¿adblocker o sin red?). Mira la consola del navegador (F12).'));
+        }
+      }, 80);
+    });
+  }
+
+  async function startWebGazer() {
+    await waitForWebGazer();
     return window.webgazer
       .setRegression('ridge')
       .setGazeListener((data) => {
@@ -122,7 +198,6 @@
       .begin()
       .then(() => {
         webgazerReady = true;
-        // Hide WebGazer's default video feed for a cleaner demo
         try { window.webgazer.showVideoPreview(false); } catch (_) {}
         try { window.webgazer.showFaceOverlay(false); } catch (_) {}
         try { window.webgazer.showFaceFeedbackBox(false); } catch (_) {}
@@ -130,39 +205,85 @@
       });
   }
 
-  function start() {
+  // ── Public actions ─────────────────────────────────────────────────
+  async function start() {
+    clearDiag();
     ui.welcome.classList.add('hidden');
     ui.arena.classList.remove('hidden');
-    updateHUD('INICIANDO WEBCAM…');
+    updateHUD('PIDIENDO PERMISO DE CÁMARA…');
 
-    startWebGazer().then(() => {
-      plan = buildPlan();
-      idx = 0;
-      errors = [];
-      placeTarget();
-    }).catch((e) => {
-      console.error(e);
-      ui.hudState.textContent = 'ERROR DE CÁMARA';
-    });
+    try {
+      const stream = await requestCamera();
+      ui.preview.srcObject = stream;
+    } catch (err) {
+      ui.arena.classList.add('hidden');
+      ui.welcome.classList.remove('hidden');
+      const msg = err && err.name === 'EnvError' ? err.message : describeCameraError(err);
+      showDiag('❌ <b>No se ha podido activar la cámara.</b><br/>' + msg, 'error');
+      return;
+    }
+
+    updateHUD('CARGANDO MODELO…');
+    try {
+      await startWebGazer();
+    } catch (err) {
+      ui.arena.classList.add('hidden');
+      ui.welcome.classList.remove('hidden');
+      showDiag('❌ ' + (err && err.message || err), 'error');
+      stopCamera();
+      return;
+    }
+
+    plan = buildPlan();
+    idx = 0;
+    errors = [];
+    placeTarget();
+  }
+
+  async function checkCamera() {
+    clearDiag();
+    showDiag('⏳ Comprobando cámara…', 'info');
+    try {
+      const stream = await requestCamera();
+      const track = stream.getVideoTracks()[0];
+      const settings = track.getSettings();
+      stream.getTracks().forEach(t => t.stop());
+      showDiag(
+        '✅ <b>Cámara accesible.</b><br/>' +
+        `Dispositivo: <code>${track.label || '(sin nombre)'}</code><br/>` +
+        `Resolución: <code>${settings.width || '?'}×${settings.height || '?'}</code> @ ${settings.frameRate || '?'} fps<br/>` +
+        '👉 Pulsa <b>Empezar</b> para iniciar la calibración.',
+        'success',
+      );
+    } catch (err) {
+      const msg = err && err.name === 'EnvError' ? err.message : describeCameraError(err);
+      showDiag('❌ <b>Cámara no disponible.</b><br/>' + msg, 'error');
+    }
   }
 
   function restart() {
     ui.result.classList.add('hidden');
     ui.welcome.classList.remove('hidden');
-    if (window.webgazer) {
-      try { window.webgazer.end(); } catch (_) {}
-    }
+    if (window.webgazer) { try { window.webgazer.end(); } catch (_) {} }
+    stopCamera();
     webgazerReady = false;
   }
 
   // ── wire up ─────────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
     $('start').addEventListener('click', start);
+    $('check-cam').addEventListener('click', checkCamera);
     $('finish').addEventListener('click', finish);
     $('restart').addEventListener('click', restart);
     ui.target.addEventListener('click', onTargetClick);
     window.addEventListener('beforeunload', () => {
       if (window.webgazer) { try { window.webgazer.end(); } catch (_) {} }
+      stopCamera();
     });
+
+    const issues = envOk();
+    if (issues.length) {
+      showDiag('⚠️ ' + issues.map(i => '• ' + i).join('<br/>'), 'warn');
+    }
   });
 })();

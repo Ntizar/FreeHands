@@ -258,3 +258,14 @@ footer {
 }
 
 .result h2 { margin-top: 0; }
+
+/* Demo additions */
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
+.diag{margin-top:18px;padding:14px 18px;border-radius:14px;font-size:14px;line-height:1.55;backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.5)}
+.diag-info{background:rgba(30,91,255,.10);color:#0b2d80}
+.diag-success{background:rgba(46,160,67,.12);color:#1a5b1a}
+.diag-warn{background:rgba(255,170,0,.15);color:#7a4a00}
+.diag-error{background:rgba(255,80,80,.12);color:#8a1c1c}
+.diag code{background:rgba(0,0,0,.06);padding:1px 6px;border-radius:6px;font-size:12.5px}
+.webcam-preview{position:fixed;right:18px;bottom:18px;width:160px;height:120px;object-fit:cover;border-radius:14px;border:1px solid rgba(255,255,255,.6);box-shadow:0 8px 24px rgba(30,91,255,.18);z-index:5;background:#000}
+

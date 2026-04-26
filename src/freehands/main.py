@@ -17,10 +17,34 @@ from .ui.overlay import GazeOverlay
 
 
 def run_system(user_id: str, voice_enabled: bool = True) -> int:
+    # ── Auto-onboarding: if no profile or no gaze model, calibrate first ──
+    from .profiles.store import profile_path
+    from .ui.calibration_game import run_calibration
+
+    needs_calibration = False
+    if not profile_path(user_id).exists():
+        print(f"[FreeHands] No existe perfil para '{user_id}'. Lanzando calibración…")
+        needs_calibration = True
+    else:
+        try:
+            tmp = load_profile(user_id)
+            if not tmp.gaze_model.weights_x:
+                print(f"[FreeHands] El perfil '{user_id}' no tiene modelo de mirada. Lanzando calibración…")
+                needs_calibration = True
+        except Exception as e:
+            print(f"[FreeHands] No se pudo leer el perfil ({e}). Lanzando calibración…")
+            needs_calibration = True
+
+    if needs_calibration:
+        rc = run_calibration(user_id=user_id)
+        if rc != 0:
+            print("[FreeHands] Calibración cancelada o fallida. Saliendo.")
+            return rc
+
     profile = load_profile(user_id)
     if not profile.gaze_model.weights_x:
-        print(f"Profile '{user_id}' has no gaze model. "
-              f"Run: freehands calibrate --user {user_id}")
+        print(f"[FreeHands] Aún no hay modelo de mirada para '{user_id}'. "
+              f"Vuelve a ejecutar la calibración.")
         return 1
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)

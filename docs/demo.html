@@ -6,8 +6,8 @@
   <title>FreeHands · Demo de mirada en navegador</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css" />
-  <!-- WebGazer.js: gaze estimation client-side -->
-  <script src="https://webgazer.cs.brown.edu/webgazer.js" defer></script>
+  <!-- WebGazer.js (gaze estimation client-side). Served from jsDelivr for stability. -->
+  <script src="https://cdn.jsdelivr.net/gh/brownhci/WebGazer@master/dist/webgazer.min.js" defer></script>
 </head>
 <body class="demo-body">
   <div class="bg-orbs">
@@ -42,7 +42,11 @@
         <li>🪑 Mantén la cabeza relativamente quieta.</li>
         <li>🔒 Todo corre en tu navegador. Ningún frame se envía a un servidor.</li>
       </ul>
-      <button id="start" class="btn btn-primary btn-lg">▶ Empezar</button>
+      <div class="btn-row">
+        <button id="check-cam" class="btn btn-ghost">🩺 Probar cámara</button>
+        <button id="start" class="btn btn-primary btn-lg">▶ Empezar</button>
+      </div>
+      <div id="diag" class="diag hidden"></div>
     </section>
 
     <!-- Aim trainer surface -->
@@ -54,6 +58,7 @@
         <span class="sep">·</span>
         <button id="finish" class="btn btn-ghost btn-sm">Terminar</button>
       </div>
+      <video id="webcam-preview" class="webcam-preview" autoplay muted playsinline></video>
       <div id="cursor" class="gaze-cursor"></div>
       <div id="target" class="target hidden"></div>
     </div>

@@ -20,7 +20,7 @@ from .config import (
     POINTER_MOVE_MIN_DELTA_PX,
     TARGET_FPS,
 )
-from .fusion import MultimodalFusion, State
+from .fusion import MultimodalFusion, State, action_for_gesture
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import load_profile, save_profile
@@ -253,14 +253,14 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         # Hand
         hand_obs = hand_tracker.detect(frame.image)
         confirmed = stabilizer.update(hand_obs.gesture, hand_obs.confidence)
-        action = profile.gesture_bindings.get(confirmed, "") if confirmed else ""
+        action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
         pause_required = profile.gesture_thresholds.get("right_open_palm")
         pause_progress = 0.0
         if hand_obs.gesture == "right_open_palm" and pause_required is not None:
             pause_progress = min(1.0, stabilizer.hold_progress("right_open_palm", pause_required.stability_frames))
             if pause_progress >= 1.0 and not pause_hold_fired:
                 confirmed = "right_open_palm"
-                action = profile.gesture_bindings.get(confirmed, "")
+                action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
                 pause_hold_fired = True
         else:
             pause_hold_fired = False

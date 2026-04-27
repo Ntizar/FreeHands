@@ -1,49 +1,71 @@
+<div align="center">
+
 # FreeHands
 
-> Hands-free PC control with gaze, hand gestures and voice. FreeHands turns your webcam into a local control loop: look where you want to act, confirm with a gesture, and keep a fully open palm available as the always-on pause switch.
+**Control your PC with your eyes, your hands and your voice.**
+No headset. No special hardware. Just a webcam.
 
-![status](https://img.shields.io/badge/status-MVP%20desktop%20%2B%20web-orange)
-![python](https://img.shields.io/badge/python-3.11%2B-blue)
-![platform](https://img.shields.io/badge/platform-Windows%20first-blue)
-![license](https://img.shields.io/badge/license-MIT-blue)
+[![status](https://img.shields.io/badge/status-MVP%20desktop%20%2B%20web-orange)](https://github.com/Ntizar/FreeHands)
+[![python](https://img.shields.io/badge/python-3.11%2B-1E5BFF)](https://www.python.org/)
+[![platform](https://img.shields.io/badge/platform-Windows%20first-1E5BFF)](#quick-start)
+[![license](https://img.shields.io/badge/license-MIT-1E5BFF)](#license)
 
-Local Duck test: [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)
+[**Try the Duck test**](https://ntizar.github.io/FreeHands/) · [Quick start](#quick-start) · [How it feels](#how-it-feels) · [Architecture](#architecture)
 
-FreeHands is built for accessibility experiments, productivity workflows and playful hands-free interaction. The desktop app can move the real Windows pointer from gaze, then execute actions through confirmed gestures. GitHub Pages is only the Duck test, so success there validates the local desktop app instead of a separate browser recognizer.
+</div>
 
-## What It Does
+---
 
-FreeHands combines three signals:
+## Why FreeHands
 
-| Signal | Role |
+Most hands-free PC tools force you to choose between accessibility, gaming or productivity. FreeHands is one local pipeline that does all three from a normal webcam.
+
+- **Look to aim, gesture to act.** Your gaze moves the real Windows pointer, your fingers click. No dwell timers in the way of normal use.
+- **Always-on safety.** A right open palm held for two seconds is the only thing that can pause or resume the system. You always have a kill switch.
+- **No cloud.** Everything runs on your machine. The GitHub Pages Duck test does not even open the camera.
+- **Plays well with games.** Direct OS clicks, fine aim assist, and a Duck Hunt style test page that talks to the local app, not a second browser recognizer.
+- **Designed in your face.** Light mode liquid glass UI in Ntizar blue and orange, with a control panel that minimizes to a small bottom bar.
+
+## How It Feels
+
+| Moment | What FreeHands does |
 | --- | --- |
-| Gaze | Estimates the screen point you are looking at. The current model mixes eyes with nose/head cues for more stable desktop aiming. |
-| Hand gestures | Confirms clicks, right clicks, double clicks, zoom and pause actions. |
-| Voice | Optional local commands through faster-whisper, with English and Spanish phrases. |
+| Look at a button | Pointer follows your gaze, then snaps into fine aim if you stay near a target. |
+| Raise your index finger | Instant left click at the pointer. |
+| Raise your middle finger | Right click. |
+| Raise index + middle | Double click. |
+| Bring both hands together / apart | Zoom in / zoom out. |
+| Raise your left open palm | Undo (Ctrl+Z). |
+| Hold your right open palm 2s | Toggle ACTIVE / PAUSED with a visible progress ring. |
 
-The central design rule is simple: visible feedback first, action second. FreeHands is intentionally conservative because a missed action is easier to recover from than an accidental click.
+Side jitter from MediaPipe (left hand reported as right and vice versa) is folded back to the same click so a flicker never eats your action. Gesture-action mappings are inline editable from the control panel: pick a new action and it saves on the spot, with duplicates removed automatically.
 
 ## Quick Start
 
-### Windows Launcher
-
-Double-click [FreeHands.bat](FreeHands.bat), or run one of these commands from the repo:
+### Windows launcher
 
 ```bat
+git clone https://github.com/Ntizar/FreeHands.git
+cd FreeHands
 FreeHands.bat
-FreeHands.bat run
-FreeHands.bat calibrate
-FreeHands.bat gaze
-FreeHands.bat gestures
-FreeHands.bat camera
-FreeHands.bat doctor
-FreeHands.bat repair
-FreeHands.bat run MyProfile
 ```
 
-The launcher creates `.venv`, installs dependencies, opens calibration when a profile is missing, and writes logs to `logs/FreeHands-last.log`.
+The launcher creates `.venv`, installs dependencies, runs calibration if there is no profile yet, and writes logs to `logs\FreeHands-last.log`.
 
-### Manual Setup
+Useful shortcuts:
+
+```bat
+FreeHands.bat run           :: run with the default profile
+FreeHands.bat run Ntizar    :: run a specific user
+FreeHands.bat calibrate     :: full calibration wizard
+FreeHands.bat gaze          :: re-run only gaze calibration
+FreeHands.bat gestures      :: re-run only gesture calibration
+FreeHands.bat camera        :: pick a different webcam
+FreeHands.bat doctor        :: environment + dependency check
+FreeHands.bat repair        :: rebuild the venv
+```
+
+### Manual setup
 
 ```powershell
 git clone https://github.com/Ntizar/FreeHands.git
@@ -56,86 +78,40 @@ python -m freehands calibrate --user Ntizar
 python -m freehands run --user Ntizar
 ```
 
-Useful maintenance commands:
+Profiles live under `%LOCALAPPDATA%\Ntizar\FreeHands\profiles`.
 
-```powershell
-python -m freehands camera --user Ntizar
-python -m freehands calibrate-gaze --user Ntizar
-python -m freehands calibrate-gestures --user Ntizar
-python -m freehands doctor
-python -m freehands repair
-python -m freehands run --user Ntizar --no-voice
-```
+## The Control Panel
 
-Profiles are stored locally under `%LOCALAPPDATA%\Ntizar\FreeHands\profiles` on Windows.
+The panel sits in the top-right corner and gives you everything at a glance:
 
-## Desktop Control
+- **Live mirrored camera preview** with hand landmarks and detected side labels.
+- **Gaze readout**: source (pupil / iris), confidence, cursor position.
+- **Hand readout**: gesture id, side and current mapped action.
+- **Pause hold meter** for the right open palm.
+- **Last action** in big orange text.
+- **Inline gesture-action editor**. Click any dropdown, pick a new action, done. Setting an action on one gesture clears it from any other gesture, so you never end up with two gestures fighting for the same click.
+- **Swap L/R** if your camera reports handedness backwards. Saved in your profile.
+- **Activate / Pause / Close** buttons for keyboard-free control.
+- **Minimize button**: collapses the panel into a small status bar pinned to the bottom-right of your screen so it does not block your work.
 
-When the local app is active, gaze moves the real Windows pointer at a throttled rate. If your gaze stays inside the same screen zone for about one second, FreeHands switches into fine aim and damps the pointer around that target to make precise clicks easier. Click gestures are direct and fast: raising the index finger emits a normal OS click without waiting for dwell or a long cooldown. Side jitter is folded back to the generic click gesture, so a momentary left/right hand flip should not make clicks disappear. Safety gestures stay slower.
+## The Duck Test
 
-The control panel stays in the top-right corner and shows the live mirrored camera preview, detected hand landmarks, detected hand side, last fired action and a pause-hold progress bar. It can be minimized with the `-` button. If your camera reports left and right backwards, press `Swap L/R`; the setting is saved in your local profile. The same panel includes a visual gesture-action editor with icons: press `Edit actions`, choose an action or `No action` for each gesture, then press `Save`.
+The repo ships a public Duck test that **does not** use the browser camera:
 
-Index, middle and two-finger gestures use one-frame detection and one-frame release rearming. In practice, lowering and raising the finger again should produce repeated OS clicks with timing close to a normal mouse tap.
+[ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/duck-hunt.html?user=ntizar)
 
-| Gesture | Default action |
-| --- | --- |
-| Left or right index up | Click |
-| Left or right middle finger up | Right click |
-| Left or right index + middle | Double click |
-| Hands together | Zoom in |
-| Hands apart | Zoom out |
-| Left open palm | Undo / go back one action |
-| Right open palm held about 2 seconds | Toggle active / paused |
-
-The small control panel shows the current state, gaze source, confidence, cursor position and detected gesture. The transparent overlay shows the gaze cursor and dwell ring. Move the mouse to a screen corner to trigger the PyAutoGUI failsafe if you need to abort quickly.
-
-## Pages And Local Duck Test
-
-Open [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/). The Pages root redirects directly to the Duck test and keeps the selected user in the URL or browser storage.
-
-The intended flow:
+Workflow:
 
 1. Run `FreeHands.bat run Ntizar` locally.
-2. Complete calibration if the profile asks for it.
-3. Activate FreeHands Desktop.
-4. Open the Pages Duck test.
-5. Look at a duck and use the index-click gesture.
+2. Activate FreeHands.
+3. Open the Pages link.
+4. Look at a duck and raise your index finger.
 
-The Duck test deliberately does not use browser gaze, browser gestures or the camera. It is a normal pointer-and-click web game: start FreeHands Desktop locally, activate it, move the Windows pointer with gaze, then use the index-click gesture to shoot. It fires on `pointerdown` for faster feedback, accepts rapid repeated shots, and adds a small aim assist when the pointer stays near a duck. That way the score still measures the local system, not a second browser-only recognizer.
+If you score, the local pipeline is working end to end: gaze, gesture, click, OS pointer event reaching the page. If you do not score, you know the issue is calibration or webcam, not the browser.
 
-## Playing Games
+## Voice (Optional)
 
-FreeHands is best for games or interactive tests that accept the normal OS pointer and clicks. Start with browser games, aim trainers, puzzle games, or windowed PC games before trying anything fast.
-
-Recommended setup:
-
-1. Recalibrate gaze in the same lighting you will use for the game.
-2. Use the camera selector if the wrong webcam is active.
-3. Run the game in windowed or borderless mode.
-4. Keep the FreeHands panel visible at first.
-5. Hold the right open palm for about 2 seconds to pause before menus, alt-tab, or risky clicks.
-
-## Calibration Tips
-
-Good calibration matters more than any single model setting.
-
-| Problem | Fix |
-| --- | --- |
-| Gaze pulls to corners | Re-run `FreeHands.bat gaze`; look at each point before confirming. |
-| Camera freezes or wrong camera opens | Use `FreeHands.bat camera` locally, or `Switch camera` in the browser. |
-| Left and right hand are reversed | Press `Swap L/R` in the top-right FreeHands panel and check the live camera preview. |
-| Eyes are not detected | Add frontal light, reduce backlight, clean the webcam frame, and keep your face centered. |
-| Gestures feel unreliable | Re-run `FreeHands.bat gestures` and hold each gesture until the ring completes. |
-| Clicks happen at the wrong place | Re-run gaze calibration and check the panel cursor readout before confirming actions. |
-| Browser says camera is unavailable | Use HTTPS or localhost, allow site camera permission, and close other apps using the webcam. |
-
-During local gaze calibration, press `C` to rotate cameras. The first points are screen corners, then the calibration moves through denser points to improve aiming.
-
-## Voice Commands
-
-Voice is optional and local. Action commands normally require a wake word such as `FreeHands` or `Ntizar`; pause and resume can be spoken directly for safety.
-
-Examples:
+Local speech via `faster-whisper`. Action commands need a wake word (`FreeHands` or `Ntizar`); pause and resume are direct for safety.
 
 ```text
 FreeHands click
@@ -148,50 +124,54 @@ pause
 resume
 ```
 
-Spanish phrases are still recognized for compatibility, including `clic`, `clic derecho`, `zoom mas`, `pausa` and `reanudar`.
+Spanish phrases such as `clic`, `clic derecho`, `pausa`, `reanudar` are also recognized.
+
+## Calibration Tips
+
+| Symptom | Fix |
+| --- | --- |
+| Gaze pulls to corners | Re-run `FreeHands.bat gaze` and stare at each point until the ring confirms. |
+| Wrong webcam opens | `FreeHands.bat camera` and pick the right one. |
+| Left and right hand swapped | Press `Swap L/R` in the panel. |
+| Eyes not detected | Front lighting, no backlight, clean lens, face centered. |
+| Clicks land off target | Recalibrate gaze in the same lighting you will use. |
+| Click feels missed when changing gesture | Already handled: stabilizer rearms in one frame on release, side-specific bindings fall back to the generic click. |
 
 ## Architecture
 
 ```text
-Camera frames
-  |
-  +-- GazeTracker   -> personal GazeRegressor -> screen x/y
-  +-- HandTracker   -> GestureStabilizer      -> confirmed gesture
-  +-- VoiceListener -> command parser         -> optional action
-  |
-  v
-MultimodalFusion
-  IDLE -> ACTIVE -> CONFIRMING -> COOLDOWN
-  |
-  v
-ActionDispatcher (PyAutoGUI)
-  |
-  v
-Real pointer, clicks, zoom, scroll, escape
+Camera frame
+  ├─ GazeTracker   → personal GazeRegressor → screen x, y
+  ├─ HandTracker   → GestureStabilizer      → confirmed gesture
+  └─ VoiceListener → command parser         → optional action
+                       │
+                       ▼
+              MultimodalFusion
+        IDLE → ACTIVE → CONFIRMING → COOLDOWN
+                       │
+                       ▼
+        ActionDispatcher (PyAutoGUI)
+                       │
+                       ▼
+   Real Windows pointer, clicks, zoom, scroll, undo
 ```
-
-Main components:
 
 | Path | Purpose |
 | --- | --- |
-| [src/freehands/main.py](src/freehands/main.py) | Runtime orchestration, pointer movement, overlay updates and action dispatch. |
-| [src/freehands/gaze](src/freehands/gaze) | Feature extraction, personal regression model and calibration helpers. |
-| [src/freehands/gestures](src/freehands/gestures) | MediaPipe hand tracking and gesture stabilization. |
-| [src/freehands/fusion](src/freehands/fusion) | State machine and multimodal safety logic. |
-| [src/freehands/ui](src/freehands/ui) | PyQt6 calibration, camera selector and always-on overlay. |
-| [docs](docs) | GitHub Pages Duck test and optional browser diagnostic files. |
+| [src/freehands/main.py](src/freehands/main.py) | Runtime loop, pointer movement, overlay, action dispatch. |
+| [src/freehands/gaze](src/freehands/gaze) | Eye/face features and personal regression model. |
+| [src/freehands/gestures](src/freehands/gestures) | MediaPipe hands, side-aware ids, multi-frame stabilizer. |
+| [src/freehands/fusion](src/freehands/fusion) | State machine, side fallback bindings, safety logic. |
+| [src/freehands/profiles](src/freehands/profiles) | Pydantic profile, dedupe + migration of bindings. |
+| [src/freehands/ui](src/freehands/ui) | PyQt6 overlay, control panel and calibration. |
+| [docs](docs) | GitHub Pages Duck test. |
 
 ## Privacy
 
-The desktop app processes camera frames locally. The Pages Duck test does not use the camera. Profiles and calibration data stay on the user's machine unless they intentionally share files.
-
-External downloads can happen for dependencies and ML models:
-
-| Dependency | Why |
-| --- | --- |
-| MediaPipe models | Hand and face/gaze tracking assets. |
-| WebGazer.js | Optional browser diagnostic page. |
-| faster-whisper model | Optional local voice commands. |
+- Camera frames are processed locally.
+- Profiles, calibration data and gesture bindings stay on disk.
+- The Pages site does not request the webcam.
+- Optional model downloads: MediaPipe (hand/face), faster-whisper (voice).
 
 ## Development
 
@@ -203,7 +183,7 @@ node --check docs/assets/duck-hunt.js
 node --check docs/assets/gestures-v3.js
 ```
 
-Run the local app from source:
+Run from source:
 
 ```powershell
 python -m freehands run --user Ntizar
@@ -211,24 +191,23 @@ python -m freehands run --user Ntizar
 
 ## Roadmap
 
-- Better game presets for click-heavy and pointer-heavy workflows.
-- Configurable gesture bindings from the desktop UI.
-- Optional spoken feedback for state changes and calibration results.
-- Packaging for non-developer Windows installs.
-- More robust browser game tests and mobile viewport checks.
-- Optional advanced voice backend experiments.
+- One-click installer for non-developer Windows users.
+- Game presets (FPS, point-and-click, browser).
+- Spoken feedback for state transitions.
+- Better head-pose compensation for off-axis cameras.
+- Cross-platform (macOS / Linux) gesture and pointer paths.
 
 ## Design System
 
-FreeHands uses the Ntizar light-mode liquid-glass look: Ntizar blue `#1E5BFF`, Ntizar orange `#FF7A1A`, soft translucent surfaces and compact control panels. Desktop theme details live in [src/freehands/ui/theme.py](src/freehands/ui/theme.py); web styling lives in [docs/assets/style.css](docs/assets/style.css).
+Light-mode liquid glass with Ntizar blue `#1E5BFF` and Ntizar orange `#FF7A1A`. Soft translucent surfaces, compact panels and high-contrast status text. Desktop theme: [src/freehands/ui/theme.py](src/freehands/ui/theme.py). Web theme: [docs/assets/style.css](docs/assets/style.css).
 
-## References
+## Credits
 
-- [WebGazer.js](https://webgazer.cs.brown.edu/) for browser gaze calibration.
-- [MediaPipe Tasks Vision](https://developers.google.com/mediapipe/solutions/vision/gesture_recognizer) for gesture recognition.
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) for optional local speech recognition.
-- [PyAutoGUI](https://pyautogui.readthedocs.io/) for desktop pointer and action dispatch.
+- [MediaPipe Tasks Vision](https://developers.google.com/mediapipe/solutions/vision/gesture_recognizer)
+- [WebGazer.js](https://webgazer.cs.brown.edu/) (browser diagnostics)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- [PyAutoGUI](https://pyautogui.readthedocs.io/)
 
 ## License
 
-MIT (c) Ntizar
+MIT © Ntizar

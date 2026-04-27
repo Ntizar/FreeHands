@@ -170,7 +170,6 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         self.setFixedWidth(420)
         self._binding_combos: dict[str, QtWidgets.QComboBox] = {}
         self._updating_bindings = False
-        self._editing_bindings = False
         self._deduping_bindings = False
         self._saved_bindings: dict[str, str] = {}
         self._minimized = False
@@ -248,7 +247,6 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             gesture_label.setObjectName("fhBindingLabel")
             combo = QtWidgets.QComboBox()
             combo.setObjectName("fhBindingCombo")
-            combo.setEnabled(False)
             for action, action_label in ACTION_OPTIONS.items():
                 combo.addItem(action_label, action)
             combo.currentIndexChanged.connect(lambda _index, g=gesture: self._emit_binding_changed(g))
@@ -256,22 +254,6 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             bindings_grid.addWidget(gesture_label, row_index, 0)
             bindings_grid.addWidget(combo, row_index, 1)
         bindings_scroll.setWidget(bindings_box)
-
-        self._binding_controls = QtWidgets.QWidget()
-        binding_controls = QtWidgets.QHBoxLayout(self._binding_controls)
-        binding_controls.setContentsMargins(0, 0, 0, 0)
-        self._edit_bindings = QtWidgets.QPushButton("Edit actions")
-        self._save_bindings = QtWidgets.QPushButton("Save")
-        self._cancel_bindings = QtWidgets.QPushButton("Cancel")
-        self._save_bindings.setVisible(False)
-        self._cancel_bindings.setVisible(False)
-        self._edit_bindings.clicked.connect(lambda: self._set_binding_edit_mode(True))
-        self._save_bindings.clicked.connect(self._save_binding_edits)
-        self._cancel_bindings.clicked.connect(self._cancel_binding_edits)
-        binding_controls.addWidget(self._edit_bindings)
-        binding_controls.addWidget(self._save_bindings)
-        binding_controls.addWidget(self._cancel_bindings)
-        binding_controls.addStretch(1)
 
         layout.addLayout(header)
         layout.addWidget(self._status)
@@ -282,7 +264,6 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         layout.addWidget(self._gesture)
         layout.addWidget(self._last_action)
         layout.addWidget(self._pause_progress)
-        layout.addWidget(self._binding_controls)
         layout.addWidget(bindings_scroll)
         layout.addWidget(hint)
 
@@ -295,7 +276,6 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             self._last_action,
             self._pause_progress,
             self._status,
-            self._binding_controls,
             self._bindings_scroll,
             hint,
         ]
@@ -366,12 +346,12 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
     def _emit_binding_changed(self, gesture: str) -> None:
         if self._updating_bindings or self._deduping_bindings:
             return
-        if self._editing_bindings:
-            combo = self._binding_combos[gesture]
-            action = combo.currentData() or ""
-            if action:
-                self._clear_duplicate_action(gesture, action)
-            self._save_bindings.setEnabled(True)
+        combo = self._binding_combos[gesture]
+        action = combo.currentData() or ""
+        if action:
+            self._clear_duplicate_action(gesture, action)
+        self._saved_bindings = self._selected_bindings()
+        self.bindings_saved.emit(dict(self._saved_bindings))
 
     def _clear_duplicate_action(self, source_gesture: str, action: str) -> None:
         self._deduping_bindings = True
@@ -381,24 +361,6 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
                     combo.setCurrentIndex(0)
         finally:
             self._deduping_bindings = False
-
-    def _set_binding_edit_mode(self, enabled: bool) -> None:
-        self._editing_bindings = enabled
-        for combo in self._binding_combos.values():
-            combo.setEnabled(enabled)
-        self._edit_bindings.setVisible(not enabled)
-        self._save_bindings.setVisible(enabled)
-        self._cancel_bindings.setVisible(enabled)
-        self._save_bindings.setEnabled(enabled)
-
-    def _save_binding_edits(self) -> None:
-        self._saved_bindings = self._selected_bindings()
-        self._set_binding_edit_mode(False)
-        self.bindings_saved.emit(dict(self._saved_bindings))
-
-    def _cancel_binding_edits(self) -> None:
-        self.set_bindings(self._saved_bindings)
-        self._set_binding_edit_mode(False)
 
     def _selected_bindings(self) -> dict[str, str]:
         return {

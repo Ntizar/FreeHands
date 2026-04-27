@@ -256,8 +256,14 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
         pause_required = profile.gesture_thresholds.get("right_open_palm")
         pause_progress = 0.0
-        if hand_obs.gesture == "right_open_palm" and pause_required is not None:
-            pause_progress = min(1.0, stabilizer.hold_progress("right_open_palm", pause_required.stability_frames))
+        if hand_obs.gesture in {"right_open_palm", "left_open_palm"} and pause_required is not None:
+            pause_progress = min(
+                1.0,
+                stabilizer.hold_progress_any(
+                    ("right_open_palm", "left_open_palm"),
+                    pause_required.stability_frames,
+                ),
+            )
             if pause_progress >= 1.0 and not pause_hold_fired:
                 confirmed = "right_open_palm"
                 action = action_for_gesture(profile.gesture_bindings, confirmed) or ""

@@ -66,7 +66,6 @@ class MultimodalFusion:
         self.sm = StateMachine(dwell_ms=profile.dwell_time_ms)
         self.gaze_stable = GazeStabilityChecker()
         self._last_action_at = 0.0
-        self._contradiction_buf: deque[tuple[float, str]] = deque(maxlen=6)
 
     def step(
         self,
@@ -90,39 +89,27 @@ class MultimodalFusion:
         gaze_is_stable = self.gaze_stable.update(cursor_xy)
         self.sm.tick(gaze_is_stable)
 
-        action: str | None = None
+        if not candidate_action or not confirmed_gesture or confirmed_gesture == "none":
+            return FusionResult(cursor_xy, self.sm.state, self.sm.dwell_progress, None)
 
-        # Anti-FP layer 5: contradictory gestures within a short window
-        # → trigger an extended cooldown.
-        if confirmed_gesture and confirmed_gesture != "none":
-            now = time.monotonic()
-            if not candidate_action:
-                return FusionResult(cursor_xy, self.sm.state, self.sm.dwell_progress, None)
+        # Direct pointer actions: every confirmed click-family gesture fires
+        # immediately, with no cooldown and no contradiction throttling.
+        if (
+            self.profile.pointer_control_enabled
+            and candidate_action in DIRECT_POINTER_ACTIONS
+        ):
+            self._last_action_at = time.monotonic()
+            return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action)
 
-            self._contradiction_buf.append((now, confirmed_gesture))
-            recent = [g for t, g in self._contradiction_buf if now - t < 2.0]
-            if len(set(recent)) >= 3:
-                self.sm.trigger_cooldown()
-                self._contradiction_buf.clear()
-                return FusionResult(cursor_xy, self.sm.state, 0.0, None)
-
-            if (
-                self.profile.pointer_control_enabled
-                and candidate_action in DIRECT_POINTER_ACTIONS
-                and self.sm.state in {State.ACTIVE, State.CONFIRMING}
-            ):
-                self._last_action_at = now
-                return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action)
-
-            if self.sm.state == State.CONFIRMING:
-                if candidate_action:
-                    action = candidate_action
-                    self._last_action_at = now
-                    self.sm.trigger_cooldown()
+        # Other actions (zoom, scroll, escape) still need dwell confirmation.
+        if self.sm.state == State.CONFIRMING:
+            self._last_action_at = time.monotonic()
+            self.sm.trigger_cooldown()
+            return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action)
 
         return FusionResult(
             cursor_xy=cursor_xy,
             state=self.sm.state,
             dwell_progress=self.sm.dwell_progress,
-            fired_action=action,
+            fired_action=None,
         )

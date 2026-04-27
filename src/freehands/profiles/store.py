@@ -82,7 +82,7 @@ class Profile(BaseModel):
             "two_hands_apart": GestureThreshold(stability_frames=6, confidence_min=0.80),
             "pinch_open":  GestureThreshold(stability_frames=5, confidence_min=0.90),
             "pinch_close": GestureThreshold(stability_frames=5, confidence_min=0.90),
-            "left_open_palm": GestureThreshold(stability_frames=10, confidence_min=0.80),
+            "left_open_palm": GestureThreshold(stability_frames=60, confidence_min=0.80),
             "right_open_palm": GestureThreshold(stability_frames=60, confidence_min=0.80),
             "fist_pause":  GestureThreshold(stability_frames=15),
         }
@@ -105,7 +105,7 @@ class Profile(BaseModel):
             "pinch_open":  "",
             "pinch_close": "",
             "tongue_out":  "",
-            "left_open_palm": "undo",
+            "left_open_palm": "",
             "right_open_palm": "toggle_pause",
             "fist_pause":  "",
         }
@@ -184,8 +184,8 @@ def load_profile(user_id: str) -> Profile:
     _migrate_threshold_if_default(
         profile,
         "left_open_palm",
-        GestureThreshold(stability_frames=10, confidence_min=0.80),
-        ((8, 0.85), (10, 0.80)),
+        GestureThreshold(stability_frames=60, confidence_min=0.80),
+        ((8, 0.85), (10, 0.80), (60, 0.80)),
     )
     _migrate_threshold_if_default(
         profile,
@@ -202,9 +202,9 @@ def load_profile(user_id: str) -> Profile:
         "right_middle_up": "",
         "left_two_fingers_up": "",
         "right_two_fingers_up": "",
-        "left_open_palm": "undo",
+        "left_open_palm": "",
     }.items():
-        if profile.gesture_bindings.get(gesture) in {"click", "right_click", "double_click"}:
+        if profile.gesture_bindings.get(gesture) in {"click", "right_click", "double_click", "undo"}:
             profile.gesture_bindings[gesture] = ""
         else:
             profile.gesture_bindings.setdefault(gesture, action)

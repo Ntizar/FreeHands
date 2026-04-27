@@ -88,6 +88,17 @@ class GestureStabilizer:
             held += 1
         return min(1.0, held / required_frames)
 
+    def hold_progress_any(self, gestures: tuple[str, ...], required_frames: int) -> float:
+        if required_frames <= 0:
+            return 0.0
+        held = 0
+        targets = set(gestures)
+        for recent_gesture, _ in reversed(self._buf):
+            if recent_gesture not in targets:
+                break
+            held += 1
+        return min(1.0, held / required_frames)
+
     @staticmethod
     def _gesture_key(gesture: str) -> str:
         for prefix in SIDE_PREFIXES:

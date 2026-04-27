@@ -6,12 +6,12 @@ def test_default_profile_uses_right_open_palm_for_pause() -> None:
     profile = Profile(user_id="test")
 
     assert profile.gesture_bindings["right_open_palm"] == "toggle_pause"
-    assert profile.gesture_bindings["left_open_palm"] == "undo"
+    assert profile.gesture_bindings["left_open_palm"] == ""
     assert profile.gesture_bindings["fist_pause"] == ""
     assert profile.gesture_bindings["left_pointing_up"] == ""
     assert profile.gesture_bindings["right_pointing_up"] == ""
     assert profile.gesture_thresholds["two_fingers_up"].stability_frames == 1
-    assert profile.gesture_thresholds["left_open_palm"].stability_frames == 10
+    assert profile.gesture_thresholds["left_open_palm"].stability_frames == 60
     assert profile.gesture_thresholds["right_open_palm"].stability_frames == 60
 
     actions = [action for action in profile.gesture_bindings.values() if action]
@@ -108,14 +108,14 @@ def test_toggle_pause_can_be_mapped_to_another_gesture() -> None:
     assert result.state is State.IDLE
 
 
-def test_left_open_palm_fires_undo_when_active() -> None:
+def test_left_open_palm_is_unbound_by_default() -> None:
     profile = Profile(user_id="test")
     fusion = MultimodalFusion(profile)
     fusion.sm.activate()
 
     result = fusion.step((320, 240), "left_open_palm")
 
-    assert result.fired_action == "undo"
+    assert result.fired_action is None
     assert result.state is State.ACTIVE
 
 
@@ -128,3 +128,21 @@ def test_closed_fist_no_longer_pauses_or_blocks_clicks() -> None:
 
     assert result.fired_action is None
     assert result.state is State.ACTIVE
+
+
+def test_repeated_clicks_never_get_throttled_by_side_jitter() -> None:
+    profile = Profile(user_id="test")
+    profile.pointer_control_enabled = True
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    sequence = [
+        "right_pointing_up",
+        "pointing_up",
+        "left_pointing_up",
+        "right_pointing_up",
+        "pointing_up",
+    ]
+    fired = [fusion.step((320, 240), gesture).fired_action for gesture in sequence]
+
+    assert fired == ["click"] * len(sequence)

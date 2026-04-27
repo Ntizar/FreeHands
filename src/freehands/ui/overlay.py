@@ -152,7 +152,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         row.addWidget(self._pause)
         row.addWidget(quit_btn)
 
-        hint = QtWidgets.QLabel("Gesture: closed fist toggles active/paused.")
+        hint = QtWidgets.QLabel("Gesture: right open palm toggles active/paused.")
         hint.setWordWrap(True)
         hint.setObjectName("fhHint")
         self._gaze = QtWidgets.QLabel("Gaze: waiting")
@@ -218,7 +218,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             "two_fingers_up": "Index+middle",
             "two_hands_together": "Hands together",
             "two_hands_apart": "Hands apart",
-            "fist_pause": "Fist",
+            "right_open_palm": "Right palm",
         }
         action_labels = {
             "click": "click",

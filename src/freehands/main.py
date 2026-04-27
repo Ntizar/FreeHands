@@ -168,7 +168,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     overlay = GazeOverlay()
     overlay.show()
 
-    fusion.sm.activate()  # start in ACTIVE; fist gesture toggles back to IDLE
+    fusion.sm.activate()  # start in ACTIVE; open palm toggles back to IDLE
 
     panel = FreeHandsControlPanel(user_id)
 

@@ -48,11 +48,12 @@ class Profile(BaseModel):
             "thumb_down":  GestureThreshold(),
             "pointing_up": GestureThreshold(stability_frames=5, confidence_min=0.75),
             "middle_up":   GestureThreshold(stability_frames=5, confidence_min=0.75),
-            "two_fingers_up": GestureThreshold(stability_frames=5, confidence_min=0.75),
+            "two_fingers_up": GestureThreshold(stability_frames=3, confidence_min=0.70),
             "two_hands_together": GestureThreshold(stability_frames=6, confidence_min=0.80),
             "two_hands_apart": GestureThreshold(stability_frames=6, confidence_min=0.80),
             "pinch_open":  GestureThreshold(stability_frames=5, confidence_min=0.90),
             "pinch_close": GestureThreshold(stability_frames=5, confidence_min=0.90),
+            "right_open_palm": GestureThreshold(stability_frames=12, confidence_min=0.80),
             "fist_pause":  GestureThreshold(stability_frames=15),
         }
     )
@@ -68,7 +69,8 @@ class Profile(BaseModel):
             "pinch_open":  "zoom_in",
             "pinch_close": "zoom_out",
             "tongue_out":  "right_click",
-            "fist_pause":  "toggle_pause",
+            "right_open_palm": "toggle_pause",
+            "fist_pause":  "",
         }
     )
     voice_enabled: bool = True
@@ -102,8 +104,12 @@ def load_profile(user_id: str) -> Profile:
     defaults = Profile(user_id=user_id)
     for gesture, threshold in defaults.gesture_thresholds.items():
         profile.gesture_thresholds.setdefault(gesture, threshold)
+    profile.gesture_thresholds["two_fingers_up"] = GestureThreshold(stability_frames=3, confidence_min=0.70)
+    profile.gesture_thresholds["right_open_palm"] = GestureThreshold(stability_frames=12, confidence_min=0.80)
     for gesture, action in defaults.gesture_bindings.items():
         profile.gesture_bindings.setdefault(gesture, action)
+    profile.gesture_bindings["right_open_palm"] = "toggle_pause"
+    profile.gesture_bindings["fist_pause"] = ""
     return profile
 
 

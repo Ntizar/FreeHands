@@ -1,6 +1,6 @@
 # FreeHands
 
-> Hands-free PC control with gaze, hand gestures and voice. FreeHands turns your webcam into a local control loop: look where you want to act, confirm with a gesture, and keep a fist available as the always-on pause switch.
+> Hands-free PC control with gaze, hand gestures and voice. FreeHands turns your webcam into a local control loop: look where you want to act, confirm with a gesture, and keep a fully open palm available as the always-on pause switch.
 
 ![status](https://img.shields.io/badge/status-MVP%20desktop%20%2B%20web-orange)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
@@ -80,7 +80,7 @@ When the local app is active, gaze moves the real Windows pointer at a throttled
 | Index + middle | Double click |
 | Hands together | Zoom in |
 | Hands apart | Zoom out |
-| Closed fist | Toggle active / paused |
+| Right open palm | Toggle active / paused |
 
 The small control panel shows the current state, gaze source, confidence, cursor position and detected gesture. The transparent overlay shows the gaze cursor and dwell ring. Move the mouse to a screen corner to trigger the PyAutoGUI failsafe if you need to abort quickly.
 
@@ -108,7 +108,7 @@ Recommended setup:
 2. Use the camera selector if the wrong webcam is active.
 3. Run the game in windowed or borderless mode.
 4. Keep the FreeHands panel visible at first.
-5. Use the closed fist to pause before menus, alt-tab, or risky clicks.
+5. Use the right open palm to pause before menus, alt-tab, or risky clicks.
 
 ## Calibration Tips
 

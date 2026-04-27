@@ -12,6 +12,7 @@ from .state_machine import State, StateMachine
 
 
 DIRECT_POINTER_ACTIONS = {"click", "right_click", "double_click"}
+PAUSE_GESTURE = "right_open_palm"
 
 
 @dataclass
@@ -56,7 +57,7 @@ class MultimodalFusion:
         confirmed_gesture: str | None,
     ) -> FusionResult:
         # The pause gesture is honoured in any state — anti-FP layer 6.
-        if confirmed_gesture == "fist_pause":
+        if confirmed_gesture == PAUSE_GESTURE:
             if self.sm.state == State.IDLE:
                 self.sm.activate()
                 return FusionResult(cursor_xy, self.sm.state, 0.0, "resume")
@@ -75,6 +76,11 @@ class MultimodalFusion:
         # → trigger an extended cooldown.
         if confirmed_gesture and confirmed_gesture != "none":
             now = time.monotonic()
+            bindings = self.profile.gesture_bindings
+            candidate_action = bindings.get(confirmed_gesture)
+            if not candidate_action:
+                return FusionResult(cursor_xy, self.sm.state, self.sm.dwell_progress, None)
+
             self._contradiction_buf.append((now, confirmed_gesture))
             recent = [g for t, g in self._contradiction_buf if now - t < 2.0]
             if len(set(recent)) >= 3:
@@ -82,8 +88,6 @@ class MultimodalFusion:
                 self._contradiction_buf.clear()
                 return FusionResult(cursor_xy, self.sm.state, 0.0, None)
 
-            bindings = self.profile.gesture_bindings
-            candidate_action = bindings.get(confirmed_gesture)
             if (
                 self.profile.pointer_control_enabled
                 and candidate_action in DIRECT_POINTER_ACTIONS

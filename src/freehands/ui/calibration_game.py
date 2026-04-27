@@ -467,7 +467,7 @@ GESTURE_BASE_ROUND: list[tuple[str, str, str]] = [
     ("two_fingers_up", "Index + middle", "Raise index and middle together: this confirms double click."),
     ("two_hands_together", "Hands together", "Show both hands close together: zoom in."),
     ("two_hands_apart", "Hands apart", "Show both hands apart: zoom out."),
-    ("fist_pause",  "Closed fist", "Close all fingers: activates or pauses FreeHands."),
+    ("right_open_palm", "Right open palm", "Open your right hand fully: activates or pauses FreeHands."),
 ]
 GESTURE_ROUND = GESTURE_BASE_ROUND + GESTURE_BASE_ROUND
 HOLD_FRAMES = 12          # ~0.4 s @ 30 fps

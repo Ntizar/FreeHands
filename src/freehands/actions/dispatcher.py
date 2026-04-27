@@ -37,7 +37,7 @@ class ActionDispatcher:
         elif action == "right_click":
             pyautogui.rightClick()
         elif action == "double_click":
-            pyautogui.doubleClick()
+            pyautogui.click(clicks=2, interval=0.12)
         elif action == "escape":
             pyautogui.press("escape")
         elif action == "zoom_in":

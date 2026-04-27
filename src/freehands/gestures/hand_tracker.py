@@ -5,7 +5,7 @@ Phase 1 ships a minimal rule-based classifier on top of the 21 hand landmarks:
     * ``thumb_up``   — thumb extended upward, other fingers folded
     * ``thumb_down`` — thumb extended downward, other fingers folded
     * ``pinch``      — index tip close to thumb tip (distance < threshold)
-    * ``fist``       — all five fingers folded (used as the always-on pause gesture)
+    * ``right_open_palm`` — hand fully open (always-on pause gesture)
 
 This stays inside the project's "no false positives" rule: rules are coarse but
 deterministic; the multi-frame :class:`~freehands.gestures.stabilizer.GestureStabilizer`
@@ -43,7 +43,7 @@ except Exception as exc:  # pragma: no cover
 GestureId = Literal[
     "thumb_up", "thumb_down", "pointing_up", "middle_up", "two_fingers_up",
     "pinch_open", "pinch_close", "two_hands_together", "two_hands_apart",
-    "fist_pause", "open_palm", "none",
+    "fist_pause", "open_palm", "right_open_palm", "none",
 ]
 
 # Landmark indices
@@ -61,6 +61,7 @@ class HandObservation:
     confidence: float
     landmarks: np.ndarray | None  # shape (21, 3) normalised
     hands: list[np.ndarray] = field(default_factory=list)
+    handedness: list[str] = field(default_factory=list)
 
 
 class HandTracker:
@@ -97,8 +98,9 @@ class HandTracker:
                 self._prev_pinch_dist = None
                 return HandObservation("none", 0.0, None, [])
             hands = [np.array([[p.x, p.y, p.z] for p in item.landmark]) for item in result.multi_hand_landmarks]
+            handedness = self._solution_handedness(result.multi_handedness)
             gesture, conf = self._classify_multi(hands)
-            return HandObservation(gesture, conf, hands[0], hands)
+            return HandObservation(gesture, conf, hands[0], hands, handedness)
 
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = self._hands.recognize(image)
@@ -107,16 +109,19 @@ class HandTracker:
             return HandObservation("none", 0.0, None, [])
 
         hands = [np.array([[p.x, p.y, p.z] for p in item]) for item in result.hand_landmarks]
+        handedness = self._task_handedness(result.handedness)
         gesture, conf = self._classify_multi(hands)
         if result.gestures and result.gestures[0]:
             top = result.gestures[0][0]
             mapped = self._map_task_gesture(top.category_name)
             if gesture not in {"two_hands_together", "two_hands_apart"} and mapped != "none" and float(top.score) >= 0.40:
                 gesture, conf = mapped, float(top.score)
-        return HandObservation(gesture, conf, hands[0], hands)
+        return HandObservation(gesture, conf, hands[0], hands, handedness)
 
     def _map_task_gesture(self, category: str) -> GestureId:
-        return {
+        if category == "Open_Palm":
+            return "right_open_palm"
+        mapped: GestureId = {
             "Thumb_Up": "thumb_up",
             "Thumb_Down": "thumb_down",
             "Pointing_Up": "pointing_up",
@@ -124,6 +129,7 @@ class HandTracker:
             "Open_Palm": "open_palm",
             "Closed_Fist": "fist_pause",
         }.get(category, "none")
+        return mapped
 
     def _classify_multi(self, hands: list[np.ndarray]) -> tuple[GestureId, float]:
         if len(hands) >= 2:
@@ -136,7 +142,34 @@ class HandTracker:
                 return "two_hands_together", 0.92
             if vertical_gap < 0.36 and dist > 0.48:
                 return "two_hands_apart", 0.90
+            classified = [self._classify(hand) for hand in hands]
+            for gesture, conf in classified:
+                if gesture == "right_open_palm":
+                    return gesture, conf
+            for gesture, conf in classified:
+                if gesture != "none":
+                    return gesture, conf
+            return "none", 0.0
         return self._classify(hands[0])
+
+    @staticmethod
+    def _solution_handedness(items: list[object] | None) -> list[str]:
+        if not items:
+            return []
+        labels: list[str] = []
+        for item in items:
+            classifications = getattr(item, "classification", [])
+            labels.append(classifications[0].label if classifications else "")
+        return labels
+
+    @staticmethod
+    def _task_handedness(items: list[list[object]] | None) -> list[str]:
+        if not items:
+            return []
+        labels: list[str] = []
+        for item in items:
+            labels.append(item[0].category_name if item else "")
+        return labels
 
     # ── classification ────────────────────────────────────────────────────
     def _classify(self, pts: np.ndarray) -> tuple[GestureId, float]:
@@ -180,7 +213,7 @@ class HandTracker:
         self._prev_pinch_dist = d
 
         if gesture == "none" and all([index_up, middle_up, ring_up, pinky_up]):
-            return "open_palm", 0.85
+            return "right_open_palm", 0.90
 
         return gesture, conf
 

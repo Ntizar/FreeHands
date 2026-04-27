@@ -22,6 +22,9 @@
     preview:  $('webcam-preview'),
     userName: $('user-name'),
     testDucks: $('test-ducks'),
+    switchCam: $('switch-cam'),
+    arenaSwitchCam: $('arena-switch-cam'),
+    cameraName: $('camera-name'),
   };
 
   const NORMALIZED_POINTS = [
@@ -34,6 +37,7 @@
   const SAMPLES_PER_POINT = 1;
   const HIT_RADIUS_PX = 75;
   const GAZE_CALIBRATION_KEY = 'freehands:gazeCalibration:v1';
+  const CAMERA_DEVICE_KEY = 'freehands:cameraDeviceId';
 
   let plan = [];
   let idx = 0;
@@ -93,8 +97,8 @@
     if (location.protocol !== 'https:' &&
         location.hostname !== 'localhost' &&
         location.hostname !== '127.0.0.1') {
-      issues.push('La página debe servirse por <b>HTTPS</b> o <b>localhost</b> para acceder a la webcam. ' +
-                  'URL actual: <code>' + location.href + '</code>');
+      issues.push('This page must run on <b>HTTPS</b> or <b>localhost</b> to access the webcam. ' +
+          'Current URL: <code>' + location.href + '</code>');
     }
     return issues;
   }
@@ -102,34 +106,89 @@
   function describeCameraError(err) {
     const name = err && err.name;
     if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-      return 'Has <b>denegado el permiso</b> de cámara. Pulsa el icono del candado en la barra de direcciones → <i>Permisos del sitio</i> → permite la <b>Cámara</b> y recarga.';
+      return 'Camera permission was <b>denied</b>. Click the lock icon in the address bar, open <i>Site permissions</i>, allow <b>Camera</b>, then reload.';
     }
     if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-      return 'No se ha encontrado ninguna <b>webcam</b> conectada.';
+      return 'No connected <b>webcam</b> was found.';
     }
     if (name === 'NotReadableError' || name === 'TrackStartError') {
-      return 'La webcam la está usando otra app (Zoom, Teams, OBS, otra pestaña…). Ciérrala y vuelve a probar.';
+      return 'The webcam is busy in another app or tab. Close it and try again.';
     }
     if (name === 'OverconstrainedError') {
-      return 'Tu cámara no soporta la configuración pedida.';
+      return 'This camera does not support the requested configuration.';
     }
     if (name === 'SecurityError') {
-      return 'Bloqueo de seguridad del navegador. Asegúrate de cargar la página desde <b>https://</b>.';
+      return 'Browser security blocked camera access. Load the page from <b>https://</b>.';
     }
-    return 'Error desconocido al acceder a la cámara: <code>' + (err && err.message || name || err) + '</code>';
+    return 'Unknown camera error: <code>' + (err && err.message || name || err) + '</code>';
   }
 
-  async function requestCamera() {
+  function cameraConstraints(deviceId = localStorage.getItem(CAMERA_DEVICE_KEY)) {
+    const video = { width: { ideal: 640 }, height: { ideal: 480 } };
+    if (deviceId) video.deviceId = { exact: deviceId };
+    else video.facingMode = 'user';
+    return video;
+  }
+
+  async function enumerateCameras() {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter((device) => device.kind === 'videoinput');
+  }
+
+  function setCameraName(label) {
+    if (ui.cameraName) ui.cameraName.textContent = `Camera: ${label || 'auto'}`;
+  }
+
+  async function rememberStreamCamera(stream) {
+    const track = stream.getVideoTracks()[0];
+    const settings = track?.getSettings?.() || {};
+    if (settings.deviceId) localStorage.setItem(CAMERA_DEVICE_KEY, settings.deviceId);
+    setCameraName(track?.label || settings.deviceId || 'auto');
+    return track;
+  }
+
+  async function chooseNextCamera() {
+    const cameras = await enumerateCameras();
+    if (!cameras.length) return null;
+    const current = localStorage.getItem(CAMERA_DEVICE_KEY);
+    const index = cameras.findIndex((camera) => camera.deviceId === current);
+    const next = cameras[(index + 1 + cameras.length) % cameras.length];
+    localStorage.setItem(CAMERA_DEVICE_KEY, next.deviceId);
+    setCameraName(next.label || `camera ${cameras.indexOf(next) + 1}`);
+    return next.deviceId;
+  }
+
+  async function requestCamera(options = {}) {
     const issues = envOk();
     if (issues.length) {
       const e = new Error(issues.map(i => '• ' + i).join('<br/>'));
       e.name = 'EnvError';
       throw e;
     }
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-      audio: false,
-    });
+    if (options.next) await chooseNextCamera();
+    stopCamera();
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: cameraConstraints(),
+        audio: false,
+      });
+    } catch (err) {
+      if (localStorage.getItem(CAMERA_DEVICE_KEY)) {
+        localStorage.removeItem(CAMERA_DEVICE_KEY);
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: cameraConstraints(null),
+          audio: false,
+        });
+      } else {
+        throw err;
+      }
+    }
+    await rememberStreamCamera(cameraStream);
+    if (ui.preview) {
+      ui.preview.srcObject = cameraStream;
+      await ui.preview.play().catch(() => {});
+    }
     return cameraStream;
   }
 
@@ -137,6 +196,32 @@
     if (cameraStream) {
       cameraStream.getTracks().forEach(t => t.stop());
       cameraStream = null;
+    }
+  }
+
+  function applyWebGazerCameraConstraints() {
+    if (!window.webgazer) return;
+    const constraints = { video: cameraConstraints(), audio: false };
+    for (const name of ['setCameraConstraints', 'setVideoConstraints']) {
+      if (typeof window.webgazer[name] === 'function') {
+        try { window.webgazer[name](constraints); } catch (_) {}
+      }
+    }
+  }
+
+  async function switchCamera() {
+    clearDiag();
+    try {
+      const stream = await requestCamera({ next: true });
+      const track = stream.getVideoTracks()[0];
+      showDiag(`Camera selected: <b>${track.label || 'next camera'}</b>`, 'success');
+      if (webgazerReady && window.webgazer) {
+        try { window.webgazer.end(); } catch (_) {}
+        webgazerReady = false;
+        await startWebGazer();
+      }
+    } catch (err) {
+      showDiag('Camera switch failed: ' + describeCameraError(err), 'error');
     }
   }
 
@@ -164,7 +249,7 @@
     ui.target.style.left = `${x}px`;
     ui.target.style.top  = `${y}px`;
     ui.target.classList.remove('hidden');
-    updateHUD('CLIC EN EL PUNTO');
+    updateHUD('CLICK THE TARGET');
   }
 
   function onTargetClick(ev) {
@@ -189,7 +274,7 @@
 
   function finish() {
     ui.target.classList.add('hidden');
-    updateHUD('FINALIZADO');
+    updateHUD('DONE');
     if (window.webgazer) { try { window.webgazer.pause(); } catch (_) {} }
     setTimeout(() => {
       ui.arena.classList.add('hidden');
@@ -220,8 +305,7 @@
         }
         else if (Date.now() - t0 > timeoutMs) {
           clearInterval(timer);
-          reject(new Error('No se ha podido cargar WebGazer.js (¿adblocker o sin red?). ' +
-            'Mira la consola del navegador (F12) para ver qué CDN ha fallado.'));
+          reject(new Error('WebGazer.js could not be loaded. Check ad blockers, network access, or the browser console.'));
         }
       }, 80);
     });
@@ -229,6 +313,7 @@
 
   async function startWebGazer() {
     await waitForWebGazer();
+    applyWebGazerCameraConstraints();
     return window.webgazer
       .setRegression('ridge')
       .setGazeListener((data) => {
@@ -253,26 +338,25 @@
     saveUserName();
     ui.welcome.classList.add('hidden');
     ui.arena.classList.remove('hidden');
-    updateHUD('PIDIENDO PERMISO DE CÁMARA…');
+    updateHUD('REQUESTING CAMERA...');
 
     try {
-      const stream = await requestCamera();
-      ui.preview.srcObject = stream;
+      await requestCamera();
     } catch (err) {
       ui.arena.classList.add('hidden');
       ui.welcome.classList.remove('hidden');
       const msg = err && err.name === 'EnvError' ? err.message : describeCameraError(err);
-      showDiag('❌ <b>No se ha podido activar la cámara.</b><br/>' + msg, 'error');
+      showDiag('<b>Camera could not start.</b><br/>' + msg, 'error');
       return;
     }
 
-    updateHUD('CARGANDO MODELO…');
+    updateHUD('LOADING MODEL...');
     try {
       await startWebGazer();
     } catch (err) {
       ui.arena.classList.add('hidden');
       ui.welcome.classList.remove('hidden');
-      showDiag('❌ ' + (err && err.message || err), 'error');
+      showDiag((err && err.message || err), 'error');
       stopCamera();
       return;
     }
@@ -286,22 +370,22 @@
 
   async function checkCamera() {
     clearDiag();
-    showDiag('⏳ Comprobando cámara…', 'info');
+    showDiag('Checking camera...', 'info');
     try {
       const stream = await requestCamera();
       const track = stream.getVideoTracks()[0];
       const settings = track.getSettings();
       stream.getTracks().forEach(t => t.stop());
       showDiag(
-        '✅ <b>Cámara accesible.</b><br/>' +
-        `Dispositivo: <code>${track.label || '(sin nombre)'}</code><br/>` +
-        `Resolución: <code>${settings.width || '?'}×${settings.height || '?'}</code> @ ${settings.frameRate || '?'} fps<br/>` +
-        '👉 Pulsa <b>Empezar</b> para iniciar la calibración.',
+        '<b>Camera is accessible.</b><br/>' +
+        `Device: <code>${track.label || '(unnamed)'}</code><br/>` +
+        `Resolution: <code>${settings.width || '?'}x${settings.height || '?'}</code> @ ${settings.frameRate || '?'} fps<br/>` +
+        'Press <b>Start</b> to begin calibration, or <b>Switch camera</b> if the preview is frozen.',
         'success',
       );
     } catch (err) {
       const msg = err && err.name === 'EnvError' ? err.message : describeCameraError(err);
-      showDiag('❌ <b>Cámara no disponible.</b><br/>' + msg, 'error');
+      showDiag('<b>Camera unavailable.</b><br/>' + msg, 'error');
     }
   }
 
@@ -320,6 +404,8 @@
     ui.userName?.addEventListener('input', saveUserName);
     $('start').addEventListener('click', start);
     $('check-cam').addEventListener('click', checkCamera);
+    ui.switchCam?.addEventListener('click', switchCamera);
+    ui.arenaSwitchCam?.addEventListener('click', switchCamera);
     $('finish').addEventListener('click', finish);
     $('restart').addEventListener('click', restart);
     ui.target.addEventListener('click', onTargetClick);

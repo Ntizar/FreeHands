@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FreeHands · Patitos</title>
+  <title>FreeHands · Duck test</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css" />
   <script src="assets/webgazer-loader.js" defer></script>
@@ -13,11 +13,11 @@
     <div class="brand">
       <span class="brand-dot"></span>
       <span class="brand-name">FreeHands</span>
-      <span class="brand-by">patitos</span>
+      <span class="brand-by">duck test</span>
     </div>
     <nav>
       <a href="demo.html" class="btn btn-ghost">Demo</a>
-      <a href="index.html" class="btn btn-ghost">Volver</a>
+      <a href="index.html" class="btn btn-ghost">Back</a>
     </nav>
   </header>
 
@@ -32,22 +32,23 @@
     <canvas id="duck-canvas"></canvas>
     <div id="duck-shot-layer" class="duck-shot-layer"></div>
     <video id="duck-video" autoplay muted playsinline></video>
-    <div id="duck-gesture" class="duck-gesture glass">Mano: preparada</div>
+    <div id="duck-gesture" class="duck-gesture glass">Hand: ready</div>
     <section class="duck-help glass">
       <strong id="duck-user">FreeHands</strong>
-      <span>Mira al pato y dispara levantando el índice. También puedes probar con clic o espacio.</span>
-      <span>Los patos suben desde abajo a distintas velocidades para medir seguimiento vertical.</span>
+      <span>Look at a duck and shoot by raising your index finger. Click and Space also work.</span>
+      <span>Ducks rise from the bottom at different speeds to test vertical tracking.</span>
     </section>
     <div class="duck-hud glass">
       <strong id="duck-score">0 / 30</strong>
-      <span id="duck-status">Preparado</span>
-      <button id="duck-start" class="btn btn-primary">Iniciar</button>
+      <span id="duck-status">Ready</span>
+      <button id="duck-camera" class="btn btn-ghost btn-sm">Camera</button>
+      <button id="duck-start" class="btn btn-primary">Start</button>
     </div>
     <div id="duck-crosshair" class="duck-crosshair"></div>
     <section id="duck-result" class="glass card duck-result hidden">
-      <h1 id="duck-title">Resultado</h1>
+      <h1 id="duck-title">Result</h1>
       <p id="duck-copy" class="lead"></p>
-      <button id="duck-again" class="btn btn-accent">Repetir</button>
+      <button id="duck-again" class="btn btn-accent">Repeat</button>
     </section>
   </main>
 

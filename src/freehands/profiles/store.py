@@ -40,6 +40,7 @@ class Profile(BaseModel):
     gesture_calibration_results: dict[str, dict[str, float | int | bool]] = Field(default_factory=dict)
     gaze_model: GazeModel = Field(default_factory=GazeModel)
     camera_index: int = CAMERA_INDEX
+    pointer_control_enabled: bool = True
     dwell_time_ms: int = DEFAULT_DWELL_MS
     gesture_thresholds: dict[str, GestureThreshold] = Field(
         default_factory=lambda: {
@@ -71,7 +72,7 @@ class Profile(BaseModel):
         }
     )
     voice_enabled: bool = True
-    voice_language: str = "es"
+    voice_language: str = "auto"
     voice_asr_backend: str = "faster_whisper"
     voice_tts_backend: str = "none"
     voice_wake_words: list[str] = Field(default_factory=lambda: ["freehands", "free hands", "ntizar"])

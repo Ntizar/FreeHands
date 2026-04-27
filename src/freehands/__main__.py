@@ -25,8 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     p_run.add_argument("--user", required=True, help="Profile id to load")
     p_run.add_argument("--no-voice", action="store_true", help="Disable voice listener")
 
-    p_check = sub.add_parser("doctor", help="Check camera / mic / dependencies")
-    p_repair = sub.add_parser("repair", help="Install/reinstall runtime dependencies")
+    sub.add_parser("doctor", help="Check camera / mic / dependencies")
+    sub.add_parser("repair", help="Install/reinstall runtime dependencies")
 
     args = parser.parse_args(argv)
 

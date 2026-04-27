@@ -240,6 +240,7 @@ footer {
 }
 .hud .sep { color: var(--text-mu); }
 #hud-state { color: var(--blue); }
+.camera-name{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
 
 .gaze-cursor {
   position: fixed; width: 24px; height: 24px; border-radius: 50%;
@@ -309,7 +310,7 @@ footer {
 .duck-gesture{position:fixed;right:18px;bottom:166px;z-index:18;padding:7px 12px;border-radius:999px;font-size:12px;font-weight:800;color:var(--text);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .duck-help{position:fixed;left:18px;top:156px;z-index:22;width:min(360px,calc(100vw - 36px));padding:12px 14px;border-radius:12px;display:flex;flex-direction:column;gap:6px;color:var(--text);font-size:13px;line-height:1.35}
 .duck-help strong{color:var(--blue);font-size:14px}.duck-help span{color:var(--text-2)}
-.duck-hud{position:fixed;left:50%;top:86px;transform:translateX(-50%);z-index:22;display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:999px;color:var(--text)}
+.duck-hud{position:fixed;left:50%;top:86px;transform:translateX(-50%);z-index:22;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:999px;color:var(--text)}
 .duck-hud strong{min-width:62px;color:var(--blue)}
 .duck-hud span{font-size:13px;color:var(--text-2);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .duck-crosshair{position:fixed;left:50%;top:50%;width:42px;height:42px;border-radius:50%;border:3px solid var(--blue);box-shadow:0 0 0 12px rgba(30,91,255,.14);transform:translate(-50%,-50%);z-index:21;pointer-events:none}
@@ -333,7 +334,8 @@ footer {
   .duck-nav .btn{padding:10px 12px}
   .duck-hud{top:82px;width:calc(100% - 24px);justify-content:space-between;gap:8px;padding:8px 10px;border-radius:22px}
   .duck-hud strong{min-width:52px;font-size:16px}
-  .duck-hud span{max-width:112px;font-size:12px}
+  .duck-hud span{max-width:104px;font-size:12px}
+  .duck-hud .btn-sm{padding:6px 8px;font-size:11px}
   .duck-help{left:12px;top:132px;width:calc(100% - 24px);padding:10px 12px;font-size:12px}
   .duck-help span:last-child{display:none}
   #duck-video{right:10px;bottom:10px;width:120px;height:90px;border-radius:10px}

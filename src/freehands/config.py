@@ -18,6 +18,8 @@ CAMERA_INDEX = 0
 TARGET_FPS = 30
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
+POINTER_MOVE_INTERVAL_MS = 35
+POINTER_MOVE_MIN_DELTA_PX = 3
 
 # ── Fusion / anti-false-positive defaults ──────────────────────────────────
 DEFAULT_DWELL_MS = 600

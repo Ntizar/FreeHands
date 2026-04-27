@@ -169,7 +169,7 @@ class GazeTracker:
         if self._backend == "solutions":
             result = self._mesh.process(rgb)
             if not result.multi_face_landmarks:
-                debug.message = "No se detecta cara"
+                debug.message = "No face detected"
                 self.last_debug = debug
                 return None
             lm = result.multi_face_landmarks[0].landmark
@@ -177,7 +177,7 @@ class GazeTracker:
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             result = self._mesh.detect(image)
             if not result.face_landmarks:
-                debug.message = "No se detecta cara"
+                debug.message = "No face detected"
                 self.last_debug = debug
                 return None
             lm = result.face_landmarks[0]
@@ -186,7 +186,7 @@ class GazeTracker:
         debug.landmark_count = len(lm)
 
         if len(lm) <= REQUIRED_EYE_LANDMARK:
-            debug.message = f"Cara detectada, pero faltan landmarks de ojos ({len(lm)})"
+            debug.message = f"Face detected, but eye landmarks are missing ({len(lm)})"
             self.last_debug = debug
             return None
 
@@ -232,9 +232,9 @@ class GazeTracker:
         feats = np.concatenate([l_rel, r_rel, head])  # 6-d
         debug.confidence = confidence
         if debug.pupil_detected:
-            debug.message = "Pupila oscura detectada"
+            debug.message = "Dark pupil detected"
         else:
-            debug.message = "Ojos e iris detectados" if debug.iris_detected else "Ojos detectados sin iris fino"
+            debug.message = "Eyes and iris detected" if debug.iris_detected else "Eyes detected without fine iris"
         debug.points = {
             "left_outer": tuple(l_outer),
             "left_inner": tuple(l_inner),

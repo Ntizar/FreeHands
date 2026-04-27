@@ -1,217 +1,228 @@
 # FreeHands
 
-> Sistema multimodal hands-free de control de pantalla por **mirada + gestos + voz**, configurable mediante un minijuego tipo *aim trainer* y diseñado con prevención de falsos positivos como prioridad nº1.
+> Hands-free PC control with gaze, hand gestures and voice. FreeHands turns your webcam into a local control loop: look where you want to act, confirm with a gesture, and keep a fist available as the always-on pause switch.
 
-![status](https://img.shields.io/badge/status-MVP%20Phase%201-orange)
+![status](https://img.shields.io/badge/status-MVP%20desktop%20%2B%20web-orange)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
+![platform](https://img.shields.io/badge/platform-Windows%20first-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
-🌐 **Demo en navegador:** [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)
+Browser demo: [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)
 
----
+FreeHands is built for accessibility experiments, productivity workflows and playful hands-free interaction. The desktop app can move the real Windows pointer from gaze, then execute actions through confirmed gestures. The web demo lets anyone calibrate gaze in the browser and try the Duck test without installing anything.
 
-## ✨ Visión
+## What It Does
 
-FreeHands permite controlar el ordenador sin teclado ni ratón combinando:
+FreeHands combines three signals:
 
-| Modalidad | Para qué |
-|-----------|----------|
-| 👁️ **Mirada (gaze)** | Posición aproximada del cursor |
-| ✋ **Gestos de mano** | Confirmación, zoom, scroll |
-| 👅 **Gestos faciales / lengua** | Comandos rápidos secundarios |
-| 🎙️ **Voz (Whisper local)** | Dictado y comandos largos |
+| Signal | Role |
+| --- | --- |
+| Gaze | Estimates the screen point you are looking at. The current model mixes eyes with nose/head cues for more stable desktop aiming. |
+| Hand gestures | Confirms clicks, right clicks, double clicks, zoom and pause actions. |
+| Voice | Optional local commands through faster-whisper, with English and Spanish phrases. |
 
-El usuario calibra el sistema con un minijuego de puntería, y a partir de ahí cada perfil se guarda en la carpeta local de la app, por ejemplo `%LOCALAPPDATA%\Ntizar\FreeHands\profiles\Ntizar.json` en Windows.
+The central design rule is simple: visible feedback first, action second. FreeHands is intentionally conservative because a missed action is easier to recover from than an accidental click.
 
-> **Principio rector:** prevención de falsos positivos > suavidad de interacción.
-> Es preferible que el sistema se sienta "rígido" antes de activar acciones no pedidas.
+## Quick Start
 
----
+### Windows Launcher
 
-## 🧱 Arquitectura
+Double-click [FreeHands.bat](FreeHands.bat), or run one of these commands from the repo:
 
-```
-                 CAPTURA (frame único @30fps)
-                            │
-        ┌───────────┬───────┴───────┬───────────┐
-        ▼           ▼               ▼           ▼
-   Gaze Tracker  Hand Tracker  Face/Tongue   Voice
-   (ridge reg.) (MediaPipe)   (FaceMesh)   (Whisper)
-        │           │               │           │
-        └───────────┴───────┬───────┴───────────┘
-                            ▼
-              ┌────────────────────────────┐
-              │ MULTIMODAL FUSION LAYER    │
-              │ Máq. de estados + buffers  │
-              │ idle → active → confirming │
-              │      → cooldown            │
-              └────────────┬───────────────┘
-                           ▼
-              ┌────────────────────────────┐
-              │ ACTION DISPATCHER (pyautogui) │
-              └────────────┬───────────────┘
-                           ▼
-              ┌────────────────────────────┐
-              │ UI OVERLAY (PyQt6)         │
-              │ Cursor · Dwell · Magnify   │
-              └────────────────────────────┘
+```bat
+FreeHands.bat
+FreeHands.bat run
+FreeHands.bat calibrate
+FreeHands.bat gaze
+FreeHands.bat gestures
+FreeHands.bat camera
+FreeHands.bat doctor
+FreeHands.bat repair
+FreeHands.bat run MyProfile
 ```
 
-Stack: `Python 3.11+` · `OpenCV` · `MediaPipe` · `faster-whisper` · `PyQt6` · `pyautogui` · `pynput`.
+The launcher creates `.venv`, installs dependencies, opens calibration when a profile is missing, and writes logs to `logs/FreeHands-last.log`.
 
----
+### Manual Setup
 
-## 🚀 Quick start
-
-### Windows · doble-click (recomendado)
-
-Sólo hay un launcher: **[FreeHands.bat](FreeHands.bat)**.
-
-```
-FreeHands.bat                       (menú interactivo)
-FreeHands.bat run                   (arranca el sistema, usuario por defecto: Ntizar)
-FreeHands.bat calibrate             (mirada + gestos)
-FreeHands.bat gaze                  (recalibra sólo mirada)
-FreeHands.bat gestures              (recalibra sólo gestos, conserva la mirada)
-FreeHands.bat camera                (elige la cámara y guarda el índice en el perfil)
-FreeHands.bat doctor                (diagnóstico de cámara/micro/dependencias)
-FreeHands.bat run otro_usuario      (otro perfil)
-```
-
-Crea el `.venv`, instala dependencias la primera vez y, si el usuario no tiene
-perfil, abre la calibración automáticamente.
-El launcher deja siempre un log en `logs/FreeHands-last.log`; si algo se abre en blanco
-y se cierra, mira ese archivo o ejecuta `FreeHands.bat doctor`.
-
-### Manual (cualquier SO)
-
-```bash
+```powershell
 git clone https://github.com/Ntizar/FreeHands.git
 cd FreeHands
 python -m venv .venv
-.\.venv\Scripts\activate          # Windows
+.\.venv\Scripts\activate
 pip install -r requirements.txt
 
 python -m freehands calibrate --user Ntizar
-python -m freehands calibrate-gaze --user Ntizar
-python -m freehands calibrate-gestures --user Ntizar
-python -m freehands camera --user Ntizar
 python -m freehands run --user Ntizar
 ```
 
-### Demo web (sin instalar nada)
+Useful maintenance commands:
 
-Abre **[ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)** → *Calibrar y probar patitos*.
-La demo pide usuario, calibra primero las esquinas y luego puntos de ajuste, y después abre
-un test tipo Duck Hunt con patos lentos. Usa **WebGazer.js** y todo el procesamiento ocurre
-en tu navegador.
-
-### Voz (Phase 3 local)
-
-La voz se activa por defecto al ejecutar el sistema local. Para evitar falsos positivos,
-los comandos de acción usan palabra de activación: `FreeHands` o `Ntizar`.
-
-Ejemplos:
-
-```
-FreeHands clic
-Ntizar doble clic
-FreeHands botón derecho
-Ntizar zoom más
-Ntizar zoom menos
-FreeHands scroll abajo
-pausa
-reanudar
-```
-
-Puedes desactivarla con:
-
-```bash
+```powershell
+python -m freehands camera --user Ntizar
+python -m freehands calibrate-gaze --user Ntizar
+python -m freehands calibrate-gestures --user Ntizar
+python -m freehands doctor
+python -m freehands repair
 python -m freehands run --user Ntizar --no-voice
 ```
 
-#### VibeVoice
+Profiles are stored locally under `%LOCALAPPDATA%\Ntizar\FreeHands\profiles` on Windows.
 
-[microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) encaja como integración avanzada de voz:
+## Desktop Control
 
-- **ASR**: posible backend alternativo para transcripciones largas, diarización y contexto personalizado.
-- **Realtime TTS**: candidato para feedback hablado del asistente (`pausado`, `calibración lista`, `acción cancelada`).
+When the local app is active, gaze moves the real Windows pointer at a throttled rate. Gestures confirm actions:
 
-Por defecto FreeHands usa `faster_whisper` porque es más ligero para comandos cortos en tiempo real. El perfil ya deja preparado el punto de extensión:
+| Gesture | Default action |
+| --- | --- |
+| Index up | Click |
+| Middle finger up | Right click |
+| Index + middle | Double click |
+| Hands together | Zoom in |
+| Hands apart | Zoom out |
+| Closed fist | Toggle active / paused |
 
-```json
-{
-     "voice_asr_backend": "faster_whisper",
-     "voice_tts_backend": "none",
-     "voice_wake_words": ["freehands", "free hands", "ntizar"]
-}
+The small control panel shows the current state, gaze source, confidence, cursor position and detected gesture. The transparent overlay shows the gaze cursor and dwell ring. Move the mouse to a screen corner to trigger the PyAutoGUI failsafe if you need to abort quickly.
+
+## Browser Demo And Duck Test
+
+Open [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/) and choose the browser demo.
+
+The browser flow:
+
+1. Allow camera access.
+2. Click `Switch camera` if the preview is frozen or the wrong camera is selected.
+3. Look at each orange target and click it.
+4. Calibration is saved in browser `localStorage`.
+5. Open the Duck test and shoot by looking at a duck, then raising your index finger.
+
+The web version uses WebGazer.js for gaze and MediaPipe Tasks Vision for gestures. It runs on HTTPS and does not upload video frames.
+
+## Playing Games
+
+FreeHands is best for games or interactive tests that accept the normal OS pointer and clicks. Start with browser games, aim trainers, puzzle games, or windowed PC games before trying anything fast.
+
+Recommended setup:
+
+1. Recalibrate gaze in the same lighting you will use for the game.
+2. Use the camera selector if the wrong webcam is active.
+3. Run the game in windowed or borderless mode.
+4. Keep the FreeHands panel visible at first.
+5. Use the closed fist to pause before menus, alt-tab, or risky clicks.
+
+## Calibration Tips
+
+Good calibration matters more than any single model setting.
+
+| Problem | Fix |
+| --- | --- |
+| Gaze pulls to corners | Re-run `FreeHands.bat gaze`; look at each point before confirming. |
+| Camera freezes or wrong camera opens | Use `FreeHands.bat camera` locally, or `Switch camera` in the browser. |
+| Eyes are not detected | Add frontal light, reduce backlight, clean the webcam frame, and keep your face centered. |
+| Gestures feel unreliable | Re-run `FreeHands.bat gestures` and hold each gesture until the ring completes. |
+| Clicks happen at the wrong place | Re-run gaze calibration and check the panel cursor readout before confirming actions. |
+| Browser says camera is unavailable | Use HTTPS or localhost, allow site camera permission, and close other apps using the webcam. |
+
+During local gaze calibration, press `C` to rotate cameras. The first points are screen corners, then the calibration moves through denser points to improve aiming.
+
+## Voice Commands
+
+Voice is optional and local. Action commands normally require a wake word such as `FreeHands` or `Ntizar`; pause and resume can be spoken directly for safety.
+
+Examples:
+
+```text
+FreeHands click
+Ntizar right click
+FreeHands double click
+Ntizar zoom in
+Ntizar zoom out
+FreeHands scroll down
+pause
+resume
 ```
 
-`vibevoice_asr` queda marcado como backend experimental hasta integrar pesos/modelos, requisitos GPU y una ruta de inferencia suficientemente rápida.
+Spanish phrases are still recognized for compatibility, including `clic`, `clic derecho`, `zoom mas`, `pausa` and `reanudar`.
 
----
+## Architecture
 
-## 🎮 Minijuego de calibración
+```text
+Camera frames
+  |
+  +-- GazeTracker   -> personal GazeRegressor -> screen x/y
+  +-- HandTracker   -> GestureStabilizer      -> confirmed gesture
+  +-- VoiceListener -> command parser         -> optional action
+  |
+  v
+MultimodalFusion
+  IDLE -> ACTIVE -> CONFIRMING -> COOLDOWN
+  |
+  v
+ActionDispatcher (PyAutoGUI)
+  |
+  v
+Real pointer, clicks, zoom, scroll, escape
+```
 
-Inspirado en `aim_botz` de Counter-Strike. Cuatro fases:
+Main components:
 
-1. **Calibración de mirada** — empieza por las 4 esquinas, sigue con puntos de ajuste y entrena un modelo **ridge regression** personalizado con más peso de nariz/cabeza y menos dependencia de pupila/iris.
-2. **Ronda de gestos** — repite cada gesto dos veces para calcular umbrales robustos: índice = clic, dedo medio = clic derecho, índice+medio = doble clic, manos juntas = zoom +, manos separadas = zoom -, puño = activar/pausar.
-3. **Voz local** — comandos en español con wake word (`FreeHands` / `Ntizar`) usando faster-whisper.
-4. **Validación final** — tareas reales sin ratón. Si el éxito < 80 %, sugiere recalibrar.
+| Path | Purpose |
+| --- | --- |
+| [src/freehands/main.py](src/freehands/main.py) | Runtime orchestration, pointer movement, overlay updates and action dispatch. |
+| [src/freehands/gaze](src/freehands/gaze) | Feature extraction, personal regression model and calibration helpers. |
+| [src/freehands/gestures](src/freehands/gestures) | MediaPipe hand tracking and gesture stabilization. |
+| [src/freehands/fusion](src/freehands/fusion) | State machine and multimodal safety logic. |
+| [src/freehands/ui](src/freehands/ui) | PyQt6 calibration, camera selector and always-on overlay. |
+| [docs](docs) | GitHub Pages demo, browser calibration and Duck test. |
 
-La versión actual de mirada usa `feature_version=4`, así que los perfiles antiguos se consideran
-obsoletos y `run` abrirá una recalibración de mirada automáticamente. En la ventana de control
-verás si la app está usando pupila oscura, iris, cursor estimado y el gesto activo.
+## Privacy
 
-La mirada y los gestos se pueden recalibrar por separado. El perfil guarda `gaze_calibrated_at`,
-`gesture_calibrated_at` y `gesture_calibration_results`, de modo que no tienes que repetir todo
-si sólo falla una fase.
+The desktop app processes camera frames locally. The browser demo processes frames in the browser. Profiles and calibration data stay on the user's machine unless they intentionally share files.
 
----
+External downloads can happen for dependencies and ML models:
 
-## 🛡️ Capa anti-falsos-positivos
+| Dependency | Why |
+| --- | --- |
+| MediaPipe models | Hand and face/gaze tracking assets. |
+| WebGazer.js | Browser gaze demo. |
+| faster-whisper model | Optional local voice commands. |
 
-| Capa | Mecanismo |
-|------|-----------|
-| 1 | Máquina de estados explícita: `IDLE → ACTIVE → CONFIRMING → COOLDOWN` |
-| 2 | Estabilidad temporal: gesto válido sólo tras N frames consecutivos coincidentes |
-| 3 | Confirmación multimodal obligatoria (mirada + gesto) |
-| 4 | Zonas espaciales válidas (mano por encima del torso) |
-| 5 | Confianza dinámica (cooldown largo si hay gestos contradictorios) |
-| 6 | Gesto de pausa **siempre** disponible (puño 1 s) |
-| 7 | Feedback visual obligatorio antes de cada acción |
+## Development
 
----
+```powershell
+python -m pytest -q
+python -m ruff check src tests
+node --check docs/assets/demo.js
+node --check docs/assets/duck-hunt.js
+node --check docs/assets/gestures-v3.js
+```
 
-## 🗺️ Roadmap
+Run the local app from source:
 
-- [x] **Phase 1 — MVP** · gaze + 2 gestos (👍/👎) + cursor con dwell
-- [x] **Phase 2** · gestos web/escritorio + perfiles + capa anti-FP
-- [x] **Phase 3** · comandos de voz locales con faster-whisper
-- [ ] **Phase 3.5** · VibeVoice opcional: ASR avanzado + feedback hablado con Realtime TTS
-- [ ] **Phase 4** · detección de lengua + bindings configurables
-- [ ] **Phase 5** · empaquetado, GPU opcional, vídeo demo
+```powershell
+python -m freehands run --user Ntizar
+```
 
----
+## Roadmap
 
-## 🎨 Sistema de diseño Ntizar
+- Better game presets for click-heavy and pointer-heavy workflows.
+- Configurable gesture bindings from the desktop UI.
+- Optional spoken feedback for state changes and calibration results.
+- Packaging for non-developer Windows installs.
+- More robust browser game tests and mobile viewport checks.
+- Optional advanced voice backend experiments.
 
-Colores: **azul Ntizar `#1E5BFF`** + **naranja Ntizar `#FF7A1A`** sobre superficies *liquid glass* en *light mode*. Detalles en [src/freehands/ui/theme.py](src/freehands/ui/theme.py).
+## Design System
 
----
+FreeHands uses the Ntizar light-mode liquid-glass look: Ntizar blue `#1E5BFF`, Ntizar orange `#FF7A1A`, soft translucent surfaces and compact control panels. Desktop theme details live in [src/freehands/ui/theme.py](src/freehands/ui/theme.py); web styling lives in [docs/assets/style.css](docs/assets/style.css).
 
-## 📚 Referencias
+## References
 
-- [antoinelame/GazeTracking](https://github.com/antoinelame/GazeTracking) — detección de pupila
-- [WebGazer.js](https://webgazer.cs.brown.edu/) — autocalibración por interacción
-- [alighazi288/Multimodal-System-Control](https://github.com/alighazi288/Multimodal-System-Control) — arquitectura concurrente
-- [Viral-Doshi/Gesture-Controlled-Virtual-Mouse](https://github.com/Viral-Doshi/Gesture-Controlled-Virtual-Mouse) — pinch zoom
-- [Kazuhito00/hand-gesture-recognition-using-mediapipe](https://github.com/Kazuhito00/hand-gesture-recognition-using-mediapipe) — pipeline de gestos custom
-- [microsoft/VibeVoice](https://github.com/microsoft/VibeVoice) — ASR/TTS avanzado, posible backend opcional
+- [WebGazer.js](https://webgazer.cs.brown.edu/) for browser gaze calibration.
+- [MediaPipe Tasks Vision](https://developers.google.com/mediapipe/solutions/vision/gesture_recognizer) for gesture recognition.
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) for optional local speech recognition.
+- [PyAutoGUI](https://pyautogui.readthedocs.io/) for desktop pointer and action dispatch.
 
----
+## License
 
-## 📄 Licencia
-
-MIT © Ntizar
+MIT (c) Ntizar

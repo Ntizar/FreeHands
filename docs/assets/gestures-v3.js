@@ -13,11 +13,11 @@ const $ = (id) => document.getElementById(id);
 
 /** Sequence of gestures we want the user to perform. */
 const ROUND = [
-  { id: 'Pointing_Up', label: 'Índice arriba ☝', binding: 'click' },
-  { id: 'Thumb_Up',    label: 'Pulgar arriba 👍',  binding: 'click' },
-  { id: 'Thumb_Down',  label: 'Pulgar abajo 👎',   binding: 'escape' },
-  { id: 'Open_Palm',   label: 'Mano abierta 🖐️',   binding: 'pause' },
-  { id: 'Closed_Fist', label: 'Puño cerrado ✊',    binding: 'reset' },
+  { id: 'Pointing_Up', label: 'Index up', binding: 'click' },
+  { id: 'Thumb_Up',    label: 'Thumb up', binding: 'click' },
+  { id: 'Thumb_Down',  label: 'Thumb down', binding: 'escape' },
+  { id: 'Open_Palm',   label: 'Open palm', binding: 'pause' },
+  { id: 'Closed_Fist', label: 'Closed fist', binding: 'reset' },
 ];
 const HOLD_FRAMES = 8;         // test mode: easier lock
 const HOLD_CONFIDENCE = 0.45;
@@ -46,7 +46,7 @@ function hideDiag() { $('g-diag').classList.add('hidden'); }
 
 async function ensureRecognizer() {
   if (recognizer) return recognizer;
-  showDiag('⏳ Descargando modelo de gestos (~5 MB, sólo la primera vez)…', 'info');
+  showDiag('Downloading gesture model (~5 MB, first run only)...', 'info');
   const fileset = await FilesetResolver.forVisionTasks(
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
   );
@@ -63,7 +63,7 @@ async function ensureRecognizer() {
     recognizer = await create('GPU');
   } catch (gpuErr) {
     console.warn('[FreeHands] MediaPipe GPU delegate failed, retrying CPU.', gpuErr);
-    showDiag('⚠️ GPU no disponible para gestos. Reintentando con CPU…', 'warn');
+    showDiag('GPU is unavailable for gestures. Retrying with CPU...', 'warn');
     recognizer = await create('CPU');
   }
   hideDiag();
@@ -123,8 +123,8 @@ function drawGestureFrame(out, top) {
 
   if (live) {
     if (top) live.textContent = `${top.categoryName} · ${(top.score * 100 | 0)}%`;
-    else if (landmarks && landmarks.length) live.textContent = 'Mano detectada · sin gesto claro';
-    else live.textContent = 'No veo tu mano';
+    else if (landmarks && landmarks.length) live.textContent = 'Hand detected · no clear gesture';
+    else live.textContent = 'I cannot see your hand';
   }
 }
 
@@ -152,7 +152,7 @@ async function detectOne(target, results, idx) {
   results[idx].status = 'in-progress';
   paintList(results);
   $('g-prompt').textContent = target.label;
-  $('g-sub').textContent = 'Mantén el gesto frente a la cámara…';
+  $('g-sub').textContent = 'Hold the gesture in front of the camera...';
 
   let held = 0;
   const t0 = performance.now();
@@ -180,7 +180,7 @@ async function detectOne(target, results, idx) {
     drawGestureFrame(out, top);
     if (top && top.categoryName === target.id && top.score >= HOLD_CONFIDENCE) {
       held++;
-      $('g-sub').textContent = `Detectado (${held}/${HOLD_FRAMES})`;
+      $('g-sub').textContent = `Detected (${held}/${HOLD_FRAMES})`;
       if (held >= HOLD_FRAMES) {
         results[idx].status = 'ok';
         $('g-skip').removeEventListener('click', skipHandler);
@@ -189,9 +189,9 @@ async function detectOne(target, results, idx) {
     } else {
       held = Math.max(0, held - 1);
       if (top) {
-        $('g-sub').textContent = `Detectado: ${top.categoryName} (${(top.score*100|0)}%)`;
+        $('g-sub').textContent = `Detected: ${top.categoryName} (${(top.score*100|0)}%)`;
       } else {
-        $('g-sub').textContent = 'No veo tu mano…';
+        $('g-sub').textContent = 'I cannot see your hand...';
       }
     }
     await new Promise(r => requestAnimationFrame(r));
@@ -222,7 +222,7 @@ async function startGestureRound() {
     await ensureVideo();
     await ensureRecognizer();
   } catch (err) {
-    showDiag('❌ No se ha podido iniciar la detección de gestos: <code>' +
+    showDiag('Could not start gesture detection: <code>' +
              (err && err.message || err) + '</code>', 'error');
     active = false;
     return;
@@ -245,7 +245,7 @@ async function startGestureRound() {
       r.status === 'ok'    ? '✅' :
       r.status === 'skip'  ? '⏭️' :
       r.status === 'fail'  ? '❌' : '·';
-    li.innerHTML = `<span>${r.label}</span><span class="badge">${icon} <i>→ ${r.binding}</i></span>`;
+    li.innerHTML = `<span>${r.label}</span><span class="badge">${icon} <i>-> ${r.binding}</i></span>`;
     ul.appendChild(li);
   }
   active = false;

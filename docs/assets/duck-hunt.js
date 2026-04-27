@@ -9,6 +9,7 @@ const HIT_RADIUS = 132;
 const POINTING_CONFIDENCE = 0.50;
 const SHOT_COOLDOWN_MS = 520;
 const GAZE_CALIBRATION_KEY = 'freehands:gazeCalibration:v1';
+const CAMERA_DEVICE_KEY = 'freehands:cameraDeviceId';
 
 let renderer, scene, camera;
 let ducks = [];
@@ -35,6 +36,46 @@ function currentUser() {
 function setGestureLabel(text) {
   const el = $('duck-gesture');
   if (el) el.textContent = text;
+}
+
+function cameraConstraints(deviceId = localStorage.getItem(CAMERA_DEVICE_KEY)) {
+  const videoConstraints = { width: { ideal: 640 }, height: { ideal: 480 } };
+  if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+  else videoConstraints.facingMode = 'user';
+  return videoConstraints;
+}
+
+async function enumerateCameras() {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return devices.filter((device) => device.kind === 'videoinput');
+}
+
+async function chooseNextCamera() {
+  const cameras = await enumerateCameras();
+  if (!cameras.length) return null;
+  const current = localStorage.getItem(CAMERA_DEVICE_KEY);
+  const index = cameras.findIndex((cameraDevice) => cameraDevice.deviceId === current);
+  const next = cameras[(index + 1 + cameras.length) % cameras.length];
+  localStorage.setItem(CAMERA_DEVICE_KEY, next.deviceId);
+  return next.deviceId;
+}
+
+function rememberCamera(stream) {
+  const track = stream.getVideoTracks()[0];
+  const settings = track?.getSettings?.() || {};
+  if (settings.deviceId) localStorage.setItem(CAMERA_DEVICE_KEY, settings.deviceId);
+  return track?.label || settings.deviceId || 'camera';
+}
+
+function applyWebGazerCameraConstraints() {
+  if (!window.webgazer) return;
+  const constraints = { video: cameraConstraints(), audio: false };
+  for (const name of ['setCameraConstraints', 'setVideoConstraints']) {
+    if (typeof window.webgazer[name] === 'function') {
+      try { window.webgazer[name](constraints); } catch (_) {}
+    }
+  }
 }
 
 function ensureAudio() {
@@ -221,36 +262,60 @@ function spawnDuck() {
   spawned++;
 }
 
-async function setupCameraAndGestures() {
+function stopVideoStream() {
+  if (video?.srcObject) {
+    video.srcObject.getTracks().forEach((track) => track.stop());
+    video.srcObject = null;
+  }
+}
+
+async function setupCameraAndGestures(options = {}) {
   video = $('duck-video');
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+  if (options.next) await chooseNextCamera();
+  stopVideoStream();
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(), audio: false });
+  } catch (err) {
+    if (localStorage.getItem(CAMERA_DEVICE_KEY)) {
+      localStorage.removeItem(CAMERA_DEVICE_KEY);
+      stream = await navigator.mediaDevices.getUserMedia({ video: cameraConstraints(null), audio: false });
+    } else {
+      throw err;
+    }
+  }
   video.srcObject = stream;
   await video.play().catch(() => {});
+  const label = rememberCamera(stream);
 
-  const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-  const modelAssetPath = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task';
-  gestureRecognizer = await GestureRecognizer.createFromOptions(fileset, {
-    baseOptions: {
-      modelAssetPath,
-      delegate: 'GPU',
-    },
-    runningMode: 'VIDEO',
-    numHands: 1,
-  }).catch(async () => GestureRecognizer.createFromOptions(fileset, {
-    baseOptions: {
-      modelAssetPath,
-      delegate: 'CPU',
-    },
-    runningMode: 'VIDEO',
-    numHands: 1,
-  }));
+  if (!gestureRecognizer) {
+    const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    const modelAssetPath = 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task';
+    gestureRecognizer = await GestureRecognizer.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath,
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 1,
+    }).catch(async () => GestureRecognizer.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath,
+        delegate: 'CPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 1,
+    }));
+  }
+  return label;
 }
 
 async function setupGaze() {
-  if (location.protocol !== 'https:') throw new Error('HTTPS requerido para mirada');
-  if (!window.webgazer) throw new Error('WebGazer no cargó');
+  if (location.protocol !== 'https:') throw new Error('HTTPS is required for gaze tracking');
+  if (!window.webgazer) throw new Error('WebGazer did not load');
   gazeCalibrationModel = loadGazeCalibration();
-  if (!gazeCalibrationModel) throw new Error('Calibracion web no encontrada');
+  if (!gazeCalibrationModel) throw new Error('Browser gaze calibration was not found');
+  applyWebGazerCameraConstraints();
   await window.webgazer
     .setRegression('ridge')
     .setGazeListener((data) => {
@@ -270,7 +335,7 @@ function maybeGestureShoot(now) {
   const out = gestureRecognizer.recognizeForVideo(video, now);
   const top = out.gestures && out.gestures[0] && out.gestures[0][0];
   if (!top) {
-    setGestureLabel('Mano: no detectada');
+    setGestureLabel('Hand: not detected');
     return;
   }
   setGestureLabel(`${top.categoryName} · ${(top.score * 100 | 0)}%`);
@@ -305,10 +370,10 @@ function finishIfNeeded() {
   if (spawned >= TOTAL_DUCKS && ducks.length === 0) {
     running = false;
     const passed = score >= PASS_SCORE;
-    $('duck-title').textContent = passed ? 'Test superado' : 'Ajuste pendiente';
+    $('duck-title').textContent = passed ? 'Test passed' : 'Needs tuning';
     $('duck-copy').textContent = passed
-      ? `${currentUser()}, has acertado ${score} de ${TOTAL_DUCKS}. La mirada + índice están listos para subir velocidad.`
-      : `${currentUser()}, has acertado ${score} de ${TOTAL_DUCKS}. Repite mirada o prueba con más luz antes de acelerar.`;
+      ? `${currentUser()}, you hit ${score} of ${TOTAL_DUCKS}. Gaze + index are ready for faster targets.`
+      : `${currentUser()}, you hit ${score} of ${TOTAL_DUCKS}. Recalibrate gaze or improve lighting before increasing speed.`;
     $('duck-result').classList.remove('hidden');
   }
 }
@@ -341,7 +406,7 @@ async function start() {
   $('duck-result').classList.add('hidden');
   $('duck-start').disabled = true;
   localStorage.setItem('freehands:user', currentUser());
-  setStatus(`Cargando · ${currentUser()}`);
+  setStatus(`Loading · ${currentUser()}`);
   if (!renderer) setupThree();
   score = 0; spawned = 0; ducks.forEach((d) => scene.remove(d)); ducks = [];
   gazeActive = false;
@@ -349,11 +414,12 @@ async function start() {
   setScore();
   ensureAudio();
   try {
-    await setupCameraAndGestures();
+    const label = await setupCameraAndGestures();
     gestureActive = true;
+    setGestureLabel(`Camera: ${label}`);
   } catch (_) {
     gestureActive = false;
-    setGestureLabel('Mano: sin camara');
+    setGestureLabel('Hand: no camera');
   }
   try {
     await setupGaze();
@@ -362,13 +428,33 @@ async function start() {
     gazeActive = false;
   }
 
-  if (gazeActive && gestureActive) setStatus(`Mirada + indice (${gazeCalibrationModel.count} pts)`);
-  else if (gazeActive) setStatus('Mirada + click');
-  else if (gestureActive) setStatus('Puntero + indice · calibra mirada antes');
-  else setStatus('Puntero + click · calibra mirada antes');
+  if (gazeActive && gestureActive) setStatus(`Gaze + index (${gazeCalibrationModel.count} pts)`);
+  else if (gazeActive) setStatus('Gaze + click');
+  else if (gestureActive) setStatus('Pointer + index · calibrate gaze first');
+  else setStatus('Pointer + click · calibrate gaze first');
 
   running = true;
   $('duck-start').disabled = false;
+}
+
+async function switchCamera() {
+  const wasRunning = running;
+  running = false;
+  setStatus('Switching camera...');
+  try {
+    const label = await setupCameraAndGestures({ next: true });
+    setGestureLabel(`Camera: ${label}`);
+    gestureActive = true;
+    if (window.webgazer) {
+      try { window.webgazer.end(); } catch (_) {}
+      if (gazeActive) await setupGaze();
+    }
+    setStatus(wasRunning ? 'Camera switched' : 'Ready');
+  } catch (_) {
+    setStatus('Camera switch failed');
+  } finally {
+    running = wasRunning;
+  }
 }
 
 addEventListener('resize', () => {
@@ -392,4 +478,5 @@ document.addEventListener('DOMContentLoaded', () => {
   animate();
   $('duck-start').addEventListener('click', start);
   $('duck-again').addEventListener('click', start);
+  $('duck-camera').addEventListener('click', switchCamera);
 });

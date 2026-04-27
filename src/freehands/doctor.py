@@ -51,7 +51,8 @@ def run_doctor() -> int:
         hands.close()
         print("  [OK] HandTracker available")
     except Exception as e:
-        print(f"  [ERR] MediaPipe tracker missing/broken: {e}"); ok = False
+        print(f"  [ERR] MediaPipe tracker missing/broken: {e}")
+        ok = False
         print("       Run: FreeHands.bat repair")
 
     # Camera
@@ -70,14 +71,16 @@ def run_doctor() -> int:
         cam.stop()
         print(f"  [OK] Camera 0 reachable (frame={frame is not None})")
     except Exception as e:
-        print(f"  [ERR] OpenCV error: {e}"); ok = False
+        print(f"  [ERR] OpenCV error: {e}")
+        ok = False
 
     # PyQt6
     try:
         from PyQt6 import QtCore  # noqa: F401
         print("  [OK] PyQt6 importable")
     except Exception as e:
-        print(f"  [ERR] PyQt6 missing: {e}"); ok = False
+        print(f"  [ERR] PyQt6 missing: {e}")
+        ok = False
 
     # Microphone (optional)
     try:

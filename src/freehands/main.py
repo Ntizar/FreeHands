@@ -8,7 +8,13 @@ from PyQt6 import QtCore, QtWidgets
 
 from .actions import ActionDispatcher
 from .capture import Camera
-from .config import DEFAULT_GESTURE_CONFIDENCE, DEFAULT_STABILITY_FRAMES, TARGET_FPS
+from .config import (
+    DEFAULT_GESTURE_CONFIDENCE,
+    DEFAULT_STABILITY_FRAMES,
+    POINTER_MOVE_INTERVAL_MS,
+    POINTER_MOVE_MIN_DELTA_PX,
+    TARGET_FPS,
+)
 from .fusion import MultimodalFusion, State
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gestures import GestureStabilizer, HandTracker
@@ -24,28 +30,28 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     calibration_mode: str | None = None
     if not profile_path(user_id).exists():
-        print(f"[FreeHands] No existe perfil para '{user_id}'. Lanzando calibración…")
+        print(f"[FreeHands] No profile exists for '{user_id}'. Starting calibration...")
         calibration_mode = "full"
     else:
         try:
             tmp = load_profile(user_id)
             if not tmp.gaze_model.weights_x or not gaze_model_is_usable(tmp.gaze_model):
-                print(f"[FreeHands] El perfil '{user_id}' no tiene una mirada válida. Lanzando recalibración de mirada…")
+                print(f"[FreeHands] Profile '{user_id}' does not have a valid gaze model. Starting gaze recalibration...")
                 calibration_mode = "gaze"
         except Exception as e:
-            print(f"[FreeHands] No se pudo leer el perfil ({e}). Lanzando calibración…")
+            print(f"[FreeHands] Could not read the profile ({e}). Starting calibration...")
             calibration_mode = "full"
 
     if calibration_mode is not None:
         rc = run_calibration(user_id=user_id) if calibration_mode == "full" else run_gaze_calibration(user_id=user_id)
         if rc != 0:
-            print("[FreeHands] Calibración cancelada o fallida. Saliendo.")
+            print("[FreeHands] Calibration was cancelled or failed. Exiting.")
             return rc
 
     profile = load_profile(user_id)
     if not profile.gaze_model.weights_x or not gaze_model_is_usable(profile.gaze_model):
-        print(f"[FreeHands] Aún no hay modelo de mirada para '{user_id}'. "
-              f"Vuelve a ejecutar la calibración.")
+        print(f"[FreeHands] There is still no gaze model for '{user_id}'. "
+              f"Run calibration again.")
         return 1
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
@@ -54,7 +60,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     try:
         camera = Camera(profile.camera_index).start()
     except Exception as exc:
-        print(f"[FreeHands] No se pudo abrir la camara {profile.camera_index}: {exc}. Usando camara 0.")
+        print(f"[FreeHands] Could not open camera {profile.camera_index}: {exc}. Using camera 0.")
         camera = Camera().start()
     gaze_tracker = GazeTracker()
     hand_tracker = HandTracker()
@@ -71,6 +77,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     fusion = MultimodalFusion(profile)
     dispatcher = ActionDispatcher()
     voice_listener: VoiceListener | None = None
+    last_pointer_move_at = 0.0
+    last_pointer_xy: tuple[int, int] | None = None
 
     overlay = GazeOverlay()
     overlay.show()
@@ -81,12 +89,12 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     def activate_system() -> None:
         fusion.sm.activate()
-        overlay.flash_action("FreeHands activo")
+        overlay.flash_action("FreeHands active")
         panel.set_state(fusion.sm.state)
 
     def pause_system() -> None:
         fusion.sm.pause()
-        overlay.flash_action("FreeHands pausado")
+        overlay.flash_action("FreeHands paused")
         panel.set_state(fusion.sm.state)
 
     panel.activate_clicked.connect(activate_system)
@@ -103,7 +111,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 backend=profile.voice_asr_backend,
                 wake_words=tuple(profile.voice_wake_words),
             ).start()
-            print("Voice: enabled. Try: 'FreeHands clic', 'Ntizar zoom mas', 'pausa', 'reanudar'.")
+            print("Voice: enabled. Try: 'FreeHands click', 'Ntizar zoom in', 'pause', 'resume'.")
         except Exception as exc:
             voice_listener = None
             print(f"Voice: disabled ({exc})")
@@ -125,6 +133,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
+        nonlocal last_pointer_move_at, last_pointer_xy
         frame = camera.read()
         if frame is None:
             return
@@ -138,11 +147,11 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         confirmed = stabilizer.update(hand_obs.gesture, hand_obs.confidence)
         action = profile.gesture_bindings.get(confirmed, "") if confirmed else ""
         debug = gaze_tracker.last_debug
-        gaze_source = "pupila" if debug.pupil_detected else "iris" if debug.iris_detected else "sin ojos"
+        gaze_source = "pupil" if debug.pupil_detected else "iris" if debug.iris_detected else "no eyes"
         cursor_text = f"{cursor[0]},{cursor[1]}" if cursor else "-"
         panel.set_runtime_info(
-            f"Mirada: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}",
-            f"Mano: {hand_obs.gesture} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
+            f"Gaze: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}",
+            f"Hand: {hand_obs.gesture} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
         )
 
         # Fusion
@@ -150,6 +159,18 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state)
         panel.set_state(result.state)
+
+        if profile.pointer_control_enabled and result.cursor_xy is not None and result.state != State.IDLE:
+            now = time.monotonic()
+            should_move = (now - last_pointer_move_at) * 1000 >= POINTER_MOVE_INTERVAL_MS
+            if last_pointer_xy is not None:
+                dx = result.cursor_xy[0] - last_pointer_xy[0]
+                dy = result.cursor_xy[1] - last_pointer_xy[1]
+                should_move = should_move and (dx * dx + dy * dy >= POINTER_MOVE_MIN_DELTA_PX ** 2)
+            if should_move:
+                dispatcher.move_pointer(result.cursor_xy)
+                last_pointer_move_at = now
+                last_pointer_xy = result.cursor_xy
 
         if result.fired_action:
             overlay.flash_action(result.fired_action)

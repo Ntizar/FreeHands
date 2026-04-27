@@ -1,17 +1,17 @@
 @echo off
 REM ----------------------------------------------------------------------
-REM  FreeHands - launcher unico (doble-click).
+REM  FreeHands - single launcher (double-click).
 REM
-REM  Sin argumentos              -> menu interactivo.
-REM  FreeHands.bat run           -> activa FreeHands con usuario "Ntizar".
-REM  FreeHands.bat calibrate     -> mirada + gestos para "Ntizar".
-REM  FreeHands.bat gestures      -> solo gestos para "Ntizar".
-REM  FreeHands.bat camera        -> selecciona camara para "Ntizar".
-REM  FreeHands.bat repair        -> reinstala dependencias runtime.
-REM  FreeHands.bat <cmd> <user>  -> usa el usuario indicado.
+REM  No arguments                -> interactive menu.
+REM  FreeHands.bat run           -> starts FreeHands for user "Ntizar".
+REM  FreeHands.bat calibrate     -> gaze + gestures for "Ntizar".
+REM  FreeHands.bat gestures      -> gestures only for "Ntizar".
+REM  FreeHands.bat camera        -> selects camera for "Ntizar".
+REM  FreeHands.bat repair        -> reinstalls runtime dependencies.
+REM  FreeHands.bat <cmd> <user>  -> uses the selected user.
 REM
-REM  En la primera ejecucion crea el venv e instala dependencias.
-REM  Si el usuario no tiene perfil, abre la calibracion automaticamente.
+REM  On first run it creates the venv and installs dependencies.
+REM  If the user has no profile, calibration opens automatically.
 REM ----------------------------------------------------------------------
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
@@ -30,79 +30,79 @@ set "LASTLOG=%LOGDIR%\FreeHands-last.log"
 set "MENU_MODE=0"
 if "%CMD%"=="" set "MENU_MODE=1"
 
-REM -- Comprobar Python --------------------------------------------------
+REM -- Check Python ------------------------------------------------------
 where python >nul 2>nul
 if errorlevel 1 (
     echo.
-    echo [FreeHands] ERROR: Python no esta en el PATH.
-    echo            Instala Python 3.11+ desde https://www.python.org/downloads/
-    echo            y marca "Add Python to PATH" durante la instalacion.
+    echo [FreeHands] ERROR: Python is not on PATH.
+    echo            Install Python 3.11+ from https://www.python.org/downloads/
+    echo            and check "Add Python to PATH" during installation.
     echo.
     pause & exit /b 1
 )
 
-REM -- Crear venv si no existe ------------------------------------------
+REM -- Create venv if missing -------------------------------------------
 if not exist ".venv\Scripts\python.exe" (
-    echo [FreeHands] Creando entorno virtual ^(.venv^)...
+    echo [FreeHands] Creating virtual environment ^(.venv^)...
     python -m venv .venv
     if errorlevel 1 (
-        echo [FreeHands] ERROR: no se pudo crear el venv.
+        echo [FreeHands] ERROR: could not create the venv.
         pause & exit /b 1
     )
 )
 
 call ".venv\Scripts\activate.bat"
 
-REM -- Instalar dependencias si falta cualquier modulo core --------------
+REM -- Install dependencies if any core module is missing ----------------
 python -c "import freehands, cv2, mediapipe, numpy, sklearn, PyQt6, pydantic, platformdirs" 2>nul
 if errorlevel 1 (
-    echo [FreeHands] Instalando o reparando dependencias ^(puede tardar varios minutos^)...
+    echo [FreeHands] Installing or repairing dependencies ^(this can take several minutes^)...
     python -m pip install --upgrade pip
     python -m pip install -r requirements.txt
     if errorlevel 1 (
         echo.
-        echo [FreeHands] ERROR instalando dependencias de requirements.txt
+        echo [FreeHands] ERROR installing dependencies from requirements.txt
         pause & exit /b 1
     )
     python -m pip install -e .
     if errorlevel 1 (
         echo.
-        echo [FreeHands] ERROR instalando el paquete freehands en modo editable.
+        echo [FreeHands] ERROR installing the freehands package in editable mode.
         pause & exit /b 1
     )
 )
 
-REM -- Comprobacion final de dependencias core --------------------------
+REM -- Final core dependency check ---------------------------------------
 python -c "import cv2, numpy, sklearn, PyQt6, pydantic, platformdirs; from freehands.gaze import GazeTracker; from freehands.gestures import HandTracker; g=GazeTracker(); g.close(); h=HandTracker(); h.close()" 2>nul
 if errorlevel 1 (
     echo.
-    echo [FreeHands] GazeTracker/HandTracker no estan bien instalados. Reparando...
+    echo [FreeHands] GazeTracker/HandTracker are not installed correctly. Repairing...
     python -m freehands repair
     if errorlevel 1 (
         echo.
-        echo [FreeHands] ERROR: no se pudieron reparar las dependencias.
-        echo            Si mediapipe falla, instala Python 3.11 y borra la carpeta .venv.
+        echo [FreeHands] ERROR: dependencies could not be repaired.
+        echo            If mediapipe fails, install Python 3.11 and delete the .venv folder.
         pause & exit /b 1
     )
 )
 
-REM -- Menu interactivo si no hay comando -------------------------------
+REM -- Interactive menu if no command was provided -----------------------
 if "%CMD%"=="" (
     echo.
     echo  ------------------------------------------
-    echo   FreeHands - usuario: %USER%
+    echo   FreeHands - user: %USER%
     echo  ------------------------------------------
-    echo   1^) Activar FreeHands ^(control del PC^)
-    echo   2^) Calibrar todo (mirada + gestos^)
-    echo   3^) Recalibrar solo mirada
-    echo   4^) Recalibrar solo gestos
-    echo   5^) Seleccionar camara
-    echo   6^) Doctor (camara, micro, dependencias^)
-    echo   7^) Reparar dependencias
-    echo   8^) Cambiar usuario
-    echo   9^) Salir
+    echo   1^) Start FreeHands ^(PC control^)
+    echo   2^) Calibrate everything ^(gaze + gestures^)
+    echo   3^) Recalibrate gaze only
+    echo   4^) Recalibrate gestures only
+    echo   5^) Select camera
+    echo   6^) Doctor ^(camera, mic, dependencies^)
+    echo   7^) Repair dependencies
+    echo   8^) Change user
+    echo   9^) Exit
     echo.
-    set /p CHOICE="  Elige una opcion [1]: "
+    set /p CHOICE="  Choose an option [1]: "
     if "!CHOICE!"=="" set "CHOICE=1"
     if "!CHOICE!"=="1" set "CMD=run"
     if "!CHOICE!"=="2" set "CMD=calibrate"
@@ -112,48 +112,48 @@ if "%CMD%"=="" (
     if "!CHOICE!"=="6" set "CMD=doctor"
     if "!CHOICE!"=="7" set "CMD=repair"
     if "!CHOICE!"=="8" (
-        set /p USER="  Nuevo usuario: "
+        set /p USER="  New user: "
         if "!USER!"=="" set "USER=%DEFAULT_USER%"
         set "CMD=run"
     )
     if "!CHOICE!"=="9" exit /b 0
 )
 
-REM -- Ejecucion ---------------------------------------------------------
+REM -- Execution ---------------------------------------------------------
 echo [FreeHands] Log: "%LOGFILE%"
 echo FreeHands %DATE% %TIME% > "%LOGFILE%"
 echo CMD=%CMD% USER=%USER%>> "%LOGFILE%"
 
 if /I "%CMD%"=="doctor" (
-    echo [FreeHands] Ejecutando doctor...
+    echo [FreeHands] Running doctor...
     python -m freehands doctor >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="repair" (
-    echo [FreeHands] Reparando dependencias...
+    echo [FreeHands] Repairing dependencies...
     python -m freehands repair >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="camera" (
-    echo [FreeHands] Seleccionando camara para usuario "%USER%"...
+    echo [FreeHands] Selecting camera for user "%USER%"...
     python -m freehands camera --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="calibrate" (
-    echo [FreeHands] Calibrando mirada + gestos para usuario "%USER%"...
+    echo [FreeHands] Calibrating gaze + gestures for user "%USER%"...
     python -m freehands calibrate --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="gaze" (
-    echo [FreeHands] Recalibrando solo mirada para usuario "%USER%"...
+    echo [FreeHands] Recalibrating gaze only for user "%USER%"...
     python -m freehands calibrate-gaze --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="gestures" (
-    echo [FreeHands] Recalibrando solo gestos para usuario "%USER%"...
+    echo [FreeHands] Recalibrating gestures only for user "%USER%"...
     python -m freehands calibrate-gestures --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else if /I "%CMD%"=="run" (
-    echo [FreeHands] Activando FreeHands para usuario "%USER%"...
-    echo            ^(Si no tienes perfil, se abrira la calibracion primero.^)
+    echo [FreeHands] Starting FreeHands for user "%USER%"...
+    echo            ^(If you have no profile, calibration opens first.^)
     python -m freehands run --user "%USER%" >> "%LOGFILE%" 2>&1
 ) else (
-    echo Uso:
-    echo   FreeHands.bat                 ^(menu interactivo^)
-    echo   FreeHands.bat run [usuario]
-    echo   FreeHands.bat calibrate [usuario]
-    echo   FreeHands.bat gaze [usuario]
-    echo   FreeHands.bat gestures [usuario]
-    echo   FreeHands.bat camera [usuario]
+    echo Usage:
+    echo   FreeHands.bat                 ^(interactive menu^)
+    echo   FreeHands.bat run [user]
+    echo   FreeHands.bat calibrate [user]
+    echo   FreeHands.bat gaze [user]
+    echo   FreeHands.bat gestures [user]
+    echo   FreeHands.bat camera [user]
     echo   FreeHands.bat doctor
     echo   FreeHands.bat repair
     pause & exit /b 1
@@ -162,8 +162,8 @@ if /I "%CMD%"=="doctor" (
 set "EXITCODE=%ERRORLEVEL%"
 if not "%EXITCODE%"=="0" (
     echo.
-    echo [FreeHands] El proceso termino con codigo %EXITCODE%.
-    echo [FreeHands] Ultimas lineas del log:
+    echo [FreeHands] Process finished with exit code %EXITCODE%.
+    echo [FreeHands] Last log lines:
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -Path '%LOGFILE%' -Tail 40"
     pause
     exit /b %EXITCODE%
@@ -171,10 +171,10 @@ if not "%EXITCODE%"=="0" (
 if "%MENU_MODE%"=="1" (
     copy /Y "%LOGFILE%" "%LASTLOG%" >nul 2>nul
     echo.
-    echo [FreeHands] Proceso finalizado. Log guardado en:
+    echo [FreeHands] Process complete. Log saved at:
     echo %LOGFILE%
     echo.
-    echo [FreeHands] Ultimas lineas del log:
+    echo [FreeHands] Last log lines:
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -Path '%LOGFILE%' -Tail 30"
     pause
 )

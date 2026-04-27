@@ -17,8 +17,8 @@
   function tryLoad(idx) {
     if (idx >= SOURCES.length) {
       window.__webgazerLoadError =
-        'No se ha podido descargar WebGazer.js desde ningún CDN (jsDelivr, Brown). ' +
-        'Causas habituales: bloqueador de anuncios, red corporativa filtrando CDN, o sin conexión.';
+        'WebGazer.js could not be downloaded from any CDN (jsDelivr, Brown). ' +
+        'Common causes: ad blocker, corporate network filtering CDNs, or no connection.';
       console.error('[FreeHands] WebGazer load failed from all sources.');
       return;
     }

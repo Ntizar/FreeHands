@@ -85,13 +85,13 @@ class GazeOverlay(QtWidgets.QWidget):
             font.setPointSize(11)
             font.setBold(True)
             p.setFont(font)
-            p.drawText(x + 32, y + 6, f"⟶ {self._action_flash}")
+            p.drawText(x + 32, y + 6, f"-> {self._action_flash}")
 
     def _draw_state_badge(self, p: QtGui.QPainter) -> None:
         text = {
-            State.IDLE: "PAUSADO",
-            State.ACTIVE: "ACTIVO",
-            State.CONFIRMING: "CONFIRMAR",
+            State.IDLE: "PAUSED",
+            State.ACTIVE: "ACTIVE",
+            State.CONFIRMING: "CONFIRM",
             State.COOLDOWN: "COOLDOWN",
         }[self._state]
         color = {
@@ -136,12 +136,12 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
         title = QtWidgets.QLabel(f"FreeHands · {user_id}")
         title.setObjectName("fhTitle")
-        self._status = QtWidgets.QLabel("PAUSADO")
+        self._status = QtWidgets.QLabel("PAUSED")
         self._status.setObjectName("fhStatus")
 
-        self._activate = QtWidgets.QPushButton("Activar")
-        self._pause = QtWidgets.QPushButton("Desactivar")
-        quit_btn = QtWidgets.QPushButton("Cerrar")
+        self._activate = QtWidgets.QPushButton("Activate")
+        self._pause = QtWidgets.QPushButton("Pause")
+        quit_btn = QtWidgets.QPushButton("Close")
 
         self._activate.clicked.connect(self.activate_clicked.emit)
         self._pause.clicked.connect(self.pause_clicked.emit)
@@ -152,13 +152,13 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         row.addWidget(self._pause)
         row.addWidget(quit_btn)
 
-        hint = QtWidgets.QLabel("Gesto: puño cerrado alterna activar/desactivar.")
+        hint = QtWidgets.QLabel("Gesture: closed fist toggles active/paused.")
         hint.setWordWrap(True)
         hint.setObjectName("fhHint")
-        self._gaze = QtWidgets.QLabel("Mirada: esperando")
+        self._gaze = QtWidgets.QLabel("Gaze: waiting")
         self._gaze.setObjectName("fhRuntime")
         self._gaze.setWordWrap(True)
-        self._gesture = QtWidgets.QLabel("Mano: esperando")
+        self._gesture = QtWidgets.QLabel("Hand: waiting")
         self._gesture.setObjectName("fhRuntime")
         self._gesture.setWordWrap(True)
         self._bindings = QtWidgets.QLabel("")
@@ -200,7 +200,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
     def set_state(self, state: State) -> None:
         active = state != State.IDLE
-        self._status.setText("ACTIVO" if active else "PAUSADO")
+        self._status.setText("ACTIVE" if active else "PAUSED")
         self._status.setStyleSheet(
             f"color: {PALETTE.blue};" if active else f"color: {PALETTE.text_muted};"
         )
@@ -213,20 +213,20 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
     def set_bindings(self, bindings: dict[str, str]) -> None:
         labels = {
-            "pointing_up": "Indice",
-            "middle_up": "Medio",
-            "two_fingers_up": "Indice+medio",
-            "two_hands_together": "Manos juntas",
-            "two_hands_apart": "Manos separadas",
-            "fist_pause": "Puño",
+            "pointing_up": "Index",
+            "middle_up": "Middle",
+            "two_fingers_up": "Index+middle",
+            "two_hands_together": "Hands together",
+            "two_hands_apart": "Hands apart",
+            "fist_pause": "Fist",
         }
         action_labels = {
-            "click": "clic",
-            "right_click": "clic derecho",
-            "double_click": "doble clic",
+            "click": "click",
+            "right_click": "right click",
+            "double_click": "double click",
             "zoom_in": "zoom +",
             "zoom_out": "zoom -",
-            "toggle_pause": "activar/pausar",
+            "toggle_pause": "active/pause",
         }
         rows = []
         for gesture, label in labels.items():

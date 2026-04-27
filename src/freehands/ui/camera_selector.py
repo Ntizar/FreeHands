@@ -21,35 +21,35 @@ class CameraSelector(QtWidgets.QWidget):
         self.gaze = GazeTracker()
         self.hands = HandTracker()
 
-        self.setWindowTitle("FreeHands · Cámara")
+        self.setWindowTitle("FreeHands · Camera")
         self.setMinimumSize(880, 560)
 
         root = QtWidgets.QHBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(18)
 
-        self.preview = QtWidgets.QLabel("Abriendo cámara...")
+        self.preview = QtWidgets.QLabel("Opening camera...")
         self.preview.setMinimumSize(640, 480)
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.preview.setStyleSheet("background:#101426;color:white;border-radius:16px;")
 
         side = QtWidgets.QVBoxLayout()
-        title = QtWidgets.QLabel(f"Cámara para {user_id}")
+        title = QtWidgets.QLabel(f"Camera for {user_id}")
         title.setStyleSheet(f"font-size:24px;font-weight:800;color:{PALETTE.blue};")
         self.combo = QtWidgets.QComboBox()
         self.combo.currentIndexChanged.connect(self._combo_changed)
-        self.status = QtWidgets.QLabel("Selecciona la cámara que vea tu cara y tus ojos.")
+        self.status = QtWidgets.QLabel("Choose the camera that sees your face and eyes.")
         self.status.setWordWrap(True)
-        self.gaze_info = QtWidgets.QLabel("Mirada: -")
+        self.gaze_info = QtWidgets.QLabel("Gaze: -")
         self.gaze_info.setWordWrap(True)
-        self.hand_info = QtWidgets.QLabel("Manos: -")
+        self.hand_info = QtWidgets.QLabel("Hands: -")
         self.hand_info.setWordWrap(True)
 
-        save_btn = QtWidgets.QPushButton("Guardar esta cámara")
+        save_btn = QtWidgets.QPushButton("Save this camera")
         save_btn.clicked.connect(self._save)
-        next_btn = QtWidgets.QPushButton("Siguiente cámara")
+        next_btn = QtWidgets.QPushButton("Next camera")
         next_btn.clicked.connect(self._next_camera)
-        close_btn = QtWidgets.QPushButton("Cerrar")
+        close_btn = QtWidgets.QPushButton("Close")
         close_btn.clicked.connect(QtWidgets.QApplication.instance().quit)
 
         side.addWidget(title)
@@ -77,8 +77,8 @@ class CameraSelector(QtWidgets.QWidget):
         found = set(list_available_cameras(max_index=8))
         indices = sorted(found | {self.profile.camera_index}) or list(range(8))
         for index in indices:
-            suffix = "detectada" if index in found else "probar"
-            self.combo.addItem(f"Cámara {index} · {suffix}", index)
+            suffix = "detected" if index in found else "try"
+            self.combo.addItem(f"Camera {index} · {suffix}", index)
         current = self.combo.findData(self.profile.camera_index)
         self.combo.setCurrentIndex(max(current, 0))
         self._open_selected()
@@ -93,10 +93,10 @@ class CameraSelector(QtWidgets.QWidget):
             self.camera = None
         try:
             self.camera = Camera(index).start()
-            self.status.setText(f"Probando cámara {index}. Si ves tus ojos marcados, guarda esta cámara.")
+            self.status.setText(f"Testing camera {index}. If your eyes are highlighted, save this camera.")
         except Exception as exc:
-            self.status.setText(f"No pude abrir cámara {index}: {exc}")
-            self.preview.setText("Sin imagen")
+            self.status.setText(f"Could not open camera {index}: {exc}")
+            self.preview.setText("No image")
 
     def _next_camera(self) -> None:
         if self.combo.count() == 0:
@@ -107,7 +107,7 @@ class CameraSelector(QtWidgets.QWidget):
         index = int(self.combo.currentData())
         self.profile.camera_index = index
         save_profile(self.profile)
-        self.status.setText(f"Guardada cámara {index}. Calibración y FreeHands usarán esta cámara.")
+        self.status.setText(f"Saved camera {index}. Calibration and FreeHands will use this camera.")
 
     def _tick(self) -> None:
         if self.camera is None:
@@ -145,18 +145,18 @@ class CameraSelector(QtWidgets.QWidget):
                 painter.drawEllipse(point(name), 6, 6)
         if hand_obs.hands:
             painter.setPen(QtGui.QPen(QtGui.QColor("#1a7f37"), 2))
-            painter.drawText(14, 24, f"mano: {hand_obs.gesture} {hand_obs.confidence:.2f}")
+            painter.drawText(14, 24, f"hand: {hand_obs.gesture} {hand_obs.confidence:.2f}")
         painter.end()
         self.preview.setPixmap(pix)
 
         self.gaze_info.setText(
-            f"Mirada: {debug.message}\n"
-            f"cara={debug.face_detected} landmarks={debug.landmark_count} "
-            f"iris={debug.iris_detected} pupila={debug.pupil_detected} conf={debug.confidence:.2f}"
+            f"Gaze: {debug.message}\n"
+            f"face={debug.face_detected} landmarks={debug.landmark_count} "
+            f"iris={debug.iris_detected} pupil={debug.pupil_detected} conf={debug.confidence:.2f}"
         )
-        self.hand_info.setText(f"Manos: {hand_obs.gesture} · {hand_obs.confidence:.2f} · manos={len(hand_obs.hands)}")
+        self.hand_info.setText(f"Hands: {hand_obs.gesture} · {hand_obs.confidence:.2f} · hands={len(hand_obs.hands)}")
         if gaze_features is not None:
-            self.status.setText("Esta cámara ve tus ojos. Puedes guardarla.")
+            self.status.setText("This camera can see your eyes. You can save it.")
 
     def closeEvent(self, event):  # noqa: N802
         self.timer.stop()

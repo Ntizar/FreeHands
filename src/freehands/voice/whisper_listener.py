@@ -24,16 +24,16 @@ class VoiceCommand:
 WAKE_WORDS = ("freehands", "free hands", "ntizar")
 
 COMMAND_PHRASES: dict[str, tuple[str, ...]] = {
-    "double_click": ("doble click", "doble clic"),
-    "right_click": ("click derecho", "clic derecho", "boton derecho", "menu contextual"),
-    "zoom_in": ("zoom mas", "acercar", "ampliar", "aumentar"),
-    "zoom_out": ("zoom menos", "alejar", "reducir", "disminuir"),
-    "scroll_up": ("scroll arriba", "desplaza arriba", "sube", "subir"),
-    "scroll_down": ("scroll abajo", "desplaza abajo", "baja", "bajar"),
-    "toggle_pause": ("pausa", "pausar", "detente"),
-    "resume": ("reanudar", "continua", "continuar", "activar", "despausar"),
-    "escape": ("escape", "esc", "cancelar", "cancela", "atras"),
-    "click": ("click", "clic", "pincha", "selecciona", "seleccionar"),
+    "double_click": ("double click", "doble click", "doble clic"),
+    "right_click": ("right click", "context menu", "click derecho", "clic derecho", "boton derecho", "menu contextual"),
+    "zoom_in": ("zoom in", "zoom mas", "acercar", "ampliar", "aumentar"),
+    "zoom_out": ("zoom out", "zoom menos", "alejar", "reducir", "disminuir"),
+    "scroll_up": ("scroll up", "page up", "scroll arriba", "desplaza arriba", "sube", "subir"),
+    "scroll_down": ("scroll down", "page down", "scroll abajo", "desplaza abajo", "baja", "bajar"),
+    "toggle_pause": ("pause", "stop", "pausa", "pausar", "detente"),
+    "resume": ("resume", "continue", "start", "activate", "reanudar", "continua", "continuar", "activar", "despausar"),
+    "escape": ("escape", "esc", "cancel", "back", "cancelar", "cancela", "atras"),
+    "click": ("click", "select", "clic", "pincha", "selecciona", "seleccionar"),
 }
 
 
@@ -78,7 +78,7 @@ def parse_voice_command(
 class VoiceListener:
     def __init__(
         self,
-        language: str = "es",
+        language: str = "auto",
         *,
         model_size: str = "tiny",
         chunk_seconds: float = 2.5,
@@ -174,13 +174,14 @@ class VoiceListener:
                 if float(np.sqrt(np.mean(audio * audio))) < 0.006:
                     continue
 
-                segments, info = model.transcribe(
-                    audio,
-                    language=self.language,
-                    beam_size=1,
-                    vad_filter=True,
-                    condition_on_previous_text=False,
-                )
+                transcribe_kwargs = {
+                    "beam_size": 1,
+                    "vad_filter": True,
+                    "condition_on_previous_text": False,
+                }
+                if self.language and self.language.lower() != "auto":
+                    transcribe_kwargs["language"] = self.language
+                segments, info = model.transcribe(audio, **transcribe_kwargs)
                 text = " ".join(seg.text.strip() for seg in segments).strip()
                 if not text:
                     continue

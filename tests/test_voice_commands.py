@@ -10,6 +10,19 @@ def test_voice_requires_wake_word_for_clicks() -> None:
 def test_voice_safety_controls_without_wake_word() -> None:
     assert parse_voice_command("pausa") == "toggle_pause"
     assert parse_voice_command("reanudar") == "resume"
+    assert parse_voice_command("pause") == "toggle_pause"
+    assert parse_voice_command("resume") == "resume"
+
+
+def test_voice_english_action_synonyms() -> None:
+    assert parse_voice_command("FreeHands click") == "click"
+    assert parse_voice_command("Ntizar right click") == "right_click"
+    assert parse_voice_command("FreeHands double click") == "double_click"
+    assert parse_voice_command("Ntizar zoom in") == "zoom_in"
+    assert parse_voice_command("Ntizar zoom out") == "zoom_out"
+    assert parse_voice_command("FreeHands scroll down") == "scroll_down"
+    assert parse_voice_command("FreeHands scroll up") == "scroll_up"
+    assert parse_voice_command("FreeHands cancel") == "escape"
 
 
 def test_voice_spanish_action_synonyms() -> None:

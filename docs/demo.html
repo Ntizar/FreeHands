@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FreeHands · Demo de mirada en navegador</title>
+  <title>FreeHands · Browser gaze demo</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css" />
   <!-- WebGazer.js loader with CDN fallback chain (see assets/webgazer-loader.js) -->
@@ -22,32 +22,33 @@
       <span class="brand-by">demo</span>
     </div>
     <nav>
-      <a href="index.html" class="btn btn-ghost">← Volver</a>
+      <a href="index.html" class="btn btn-ghost">Back</a>
       <a href="https://github.com/Ntizar/FreeHands" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
     </nav>
   </header>
 
   <main class="demo-main">
     <section id="welcome" class="glass card welcome">
-      <span class="pill">Demo en navegador</span>
-      <h1>Aim-trainer de calibración</h1>
+      <span class="pill">Browser demo</span>
+      <h1>Gaze calibration aim trainer</h1>
       <p class="lead">
-        Vamos a calibrar tu mirada como en la app local: primero esquinas, después
-        puntos de ajuste. Mira el punto naranja y haz clic sobre él.
+        Calibrate gaze like the desktop app: corners first, then fine-tuning points.
+        Look at the orange target and click it.
       </p>
       <label class="profile-field">
-        Usuario
+        User
         <input id="user-name" type="text" value="Ntizar" maxlength="32" autocomplete="off" />
       </label>
       <ul class="checklist">
-        <li>📷 Permite el acceso a la webcam cuando lo pida.</li>
-        <li>💡 Asegúrate de tener buena luz frontal.</li>
-        <li>🪑 Mantén la cabeza relativamente quieta.</li>
-        <li>🔒 Todo corre en tu navegador. Ningún frame se envía a un servidor.</li>
+        <li>Allow camera access when the browser asks.</li>
+        <li>Use clear frontal light.</li>
+        <li>Keep your head mostly steady.</li>
+        <li>Everything runs in your browser; no video frames are uploaded.</li>
       </ul>
       <div class="btn-row">
-        <button id="check-cam" class="btn btn-ghost">🩺 Probar cámara</button>
-        <button id="start" class="btn btn-primary btn-lg">▶ Empezar</button>
+        <button id="check-cam" class="btn btn-ghost">Test camera</button>
+        <button id="switch-cam" class="btn btn-ghost">Switch camera</button>
+        <button id="start" class="btn btn-primary btn-lg">Start</button>
       </div>
       <div id="diag" class="diag hidden"></div>
     </section>
@@ -55,11 +56,14 @@
     <!-- Aim trainer surface -->
     <div id="arena" class="arena hidden">
       <div id="hud" class="hud glass">
-        <span id="hud-state">PREPARANDO…</span>
+        <span id="hud-state">PREPARING...</span>
         <span class="sep">·</span>
         <span id="hud-progress">0 / 0</span>
         <span class="sep">·</span>
-        <button id="finish" class="btn btn-ghost btn-sm">Terminar</button>
+        <span id="camera-name" class="camera-name">Camera: auto</span>
+        <span class="sep">·</span>
+        <button id="arena-switch-cam" class="btn btn-ghost btn-sm">Camera</button>
+        <button id="finish" class="btn btn-ghost btn-sm">Finish</button>
       </div>
       <video id="webcam-preview" class="webcam-preview" autoplay muted playsinline></video>
       <div id="cursor" class="gaze-cursor"></div>
@@ -67,48 +71,48 @@
     </div>
 
     <section id="result" class="glass card result hidden">
-      <h2>Calibración de mirada completada ✅</h2>
-      <p>Puntos válidos: <b id="r-points">0</b></p>
-      <p>Error medio estimado: <b id="r-rms">— px</b></p>
+      <h2>Gaze calibration complete</h2>
+      <p>Valid points: <b id="r-points">0</b></p>
+      <p>Estimated mean error: <b id="r-rms">— px</b></p>
       <div class="cta-row">
-        <button id="start-gestures" class="btn btn-primary">👋 Probar ronda de gestos</button>
-        <a id="test-ducks" href="duck-hunt.html" class="btn btn-accent">🦆 Test con patitos</a>
-        <button id="restart" class="btn btn-ghost">Repetir mirada</button>
-        <a href="index.html" class="btn btn-ghost">Volver</a>
+        <button id="start-gestures" class="btn btn-primary">Try gestures</button>
+        <a id="test-ducks" href="duck-hunt.html" class="btn btn-accent">Duck test</a>
+        <button id="restart" class="btn btn-ghost">Repeat gaze</button>
+        <a href="index.html" class="btn btn-ghost">Back</a>
       </div>
-      <p class="micro">Los gestos se detectan con <b>MediaPipe Tasks Vision</b> (en tu navegador, sin enviar nada).</p>
+      <p class="micro">Gestures run with <b>MediaPipe Tasks Vision</b> locally in your browser.</p>
     </section>
 
     <!-- Phase 2: gesture round -->
     <section id="gesture-arena" class="glass card gesture-arena hidden">
       <header class="gesture-head">
-        <h2 id="g-prompt">Pulgar arriba 👍</h2>
-        <p id="g-sub" class="lead">Mantén el gesto frente a la cámara…</p>
+        <h2 id="g-prompt">Thumb up</h2>
+        <p id="g-sub" class="lead">Hold the gesture in front of the camera.</p>
       </header>
       <div class="gesture-camera-panel">
         <video id="gesture-video" class="gesture-video" autoplay muted playsinline></video>
         <canvas id="gesture-canvas" class="gesture-canvas"></canvas>
-        <div id="gesture-live" class="gesture-live">Esperando mano…</div>
+        <div id="gesture-live" class="gesture-live">Waiting for hand...</div>
       </div>
       <div class="gesture-progress">
         <div id="g-bar" class="gesture-bar"></div>
       </div>
       <ul id="g-list" class="gesture-checklist"></ul>
       <div class="cta-row">
-        <button id="g-skip" class="btn btn-ghost">Saltar gesto</button>
-        <button id="g-cancel" class="btn btn-ghost">Cancelar</button>
+        <button id="g-skip" class="btn btn-ghost">Skip gesture</button>
+        <button id="g-cancel" class="btn btn-ghost">Cancel</button>
       </div>
       <div id="g-diag" class="diag hidden"></div>
     </section>
 
     <section id="gesture-result" class="glass card result hidden">
-      <h2>Ronda de gestos completada 🎉</h2>
+      <h2>Gesture round complete</h2>
       <ul id="g-summary" class="gesture-checklist"></ul>
       <div class="cta-row">
-        <button id="g-restart" class="btn btn-accent">Repetir gestos</button>
-        <a href="index.html" class="btn btn-ghost">Volver a la home</a>
+        <button id="g-restart" class="btn btn-accent">Repeat gestures</button>
+        <a href="index.html" class="btn btn-ghost">Back home</a>
       </div>
-      <p class="micro">¿Quieres control real del SO? Instala la <a href="https://github.com/Ntizar/FreeHands#-quick-start">app de escritorio</a>.</p>
+      <p class="micro">Need real OS control? Install the <a href="https://github.com/Ntizar/FreeHands#quick-start">desktop app</a>.</p>
     </section>
   </main>
 

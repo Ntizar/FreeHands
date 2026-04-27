@@ -35,7 +35,7 @@ Most hands-free PC tools force you to choose between accessibility, gaming or pr
 | Raise your middle finger | Right click. |
 | Raise index + middle | Double click. |
 | Bring both hands together / apart | Zoom in / zoom out. |
-| Raise your left open palm | Undo (Ctrl+Z). |
+| Raise your left open palm | Unassigned by default; map it from the control panel if you want Undo or another action. |
 | Hold your right open palm 2s | Toggle ACTIVE / PAUSED with a visible progress ring. |
 
 Side jitter from MediaPipe (left hand reported as right and vice versa) is folded back to the same click so a flicker never eats your action. Gesture-action mappings are inline editable from the control panel: pick a new action and it saves on the spot, with duplicates removed automatically.

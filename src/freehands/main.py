@@ -23,9 +23,12 @@ from .config import (
 from .fusion import MultimodalFusion, State, action_for_gesture
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gestures import GestureStabilizer, HandTracker
-from .profiles import load_profile, save_profile
+from .profiles import GestureThreshold, load_profile, save_profile
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .voice import VoiceListener
+
+
+OPEN_PALM_HOLD_GESTURES = {"left_open_palm", "right_open_palm"}
 
 
 class FineAimPointer:
@@ -107,6 +110,84 @@ class FineAimPointer:
         return delta_x * delta_x + delta_y * delta_y
 
 
+class PauseHoldGate:
+    """Leaky hold gate for whichever open palm is mapped to toggle_pause."""
+
+    def __init__(self) -> None:
+        self._score = 0.0
+        self._hold_fired = False
+        self._gesture: str | None = None
+        self._release_frames = 0
+
+    def update(
+        self,
+        observed_gesture: str,
+        bindings: dict[str, str],
+        thresholds: dict[str, GestureThreshold],
+    ) -> tuple[str | None, float]:
+        toggle_gesture = self._toggle_pause_gesture(bindings, observed_gesture)
+        if toggle_gesture is not None:
+            self._release_frames = 0
+            if self._gesture != toggle_gesture:
+                self._gesture = toggle_gesture
+                self._score = 0.0
+                self._hold_fired = False
+            required_frames = self._required_frames(thresholds, toggle_gesture)
+            if self._hold_fired:
+                self._score = 0.0
+            else:
+                self._score = min(required_frames + 6.0, self._score + 1.0)
+        elif self._hold_fired:
+            required_frames = self._required_frames(thresholds, self._gesture)
+            self._release_frames += 1
+            self._score = 0.0
+            if self._release_frames >= 2:
+                self._hold_fired = False
+                self._gesture = None
+                self._release_frames = 0
+        elif observed_gesture == "none":
+            required_frames = self._required_frames(thresholds, self._gesture)
+            self._score = max(0.0, self._score - 0.5)
+        else:
+            required_frames = self._required_frames(thresholds, self._gesture)
+            self._score = max(0.0, self._score - 2.0)
+
+        if self._score <= 0.0 and not self._hold_fired:
+            self._gesture = None
+
+        progress = min(1.0, self._score / required_frames) if required_frames > 0 else 0.0
+        confirmed = None
+        if self._gesture is not None and self._score >= required_frames and not self._hold_fired:
+            confirmed = self._gesture
+            self._hold_fired = True
+            self._score = 0.0
+            self._release_frames = 0
+            progress = 0.0
+        return confirmed, progress
+
+    @staticmethod
+    def _toggle_pause_gesture(bindings: dict[str, str], gesture: str) -> str | None:
+        if gesture not in OPEN_PALM_HOLD_GESTURES:
+            return None
+        return gesture if action_for_gesture(bindings, gesture) == "toggle_pause" else None
+
+    @staticmethod
+    def _required_frames(thresholds: dict[str, GestureThreshold], gesture: str | None) -> int:
+        threshold = thresholds.get(gesture or "right_open_palm")
+        return threshold.stability_frames if threshold is not None else 60
+
+
+def suppress_open_palm_toggle_without_hold(
+    confirmed_gesture: str | None,
+    bindings: dict[str, str],
+) -> str | None:
+    if confirmed_gesture not in OPEN_PALM_HOLD_GESTURES:
+        return confirmed_gesture
+    if action_for_gesture(bindings, confirmed_gesture) == "toggle_pause":
+        return None
+    return confirmed_gesture
+
+
 def run_system(user_id: str, voice_enabled: bool = True) -> int:
     # ── Auto-onboarding: if no profile or no gaze model, calibrate first ──
     from .profiles.store import profile_path
@@ -164,10 +245,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     dispatcher = ActionDispatcher()
     voice_listener: VoiceListener | None = None
     fine_aim = FineAimPointer()
+    pause_hold = PauseHoldGate()
     last_pointer_move_at = 0.0
     last_pointer_xy: tuple[int, int] | None = None
-    pause_score = 0.0
-    pause_hold_fired = False
 
     overlay = GazeOverlay()
     overlay.show()
@@ -238,7 +318,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy, pause_score, pause_hold_fired
+        nonlocal last_pointer_move_at, last_pointer_xy
         frame = camera.read()
         if frame is None:
             return
@@ -255,27 +335,24 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         hand_obs = hand_tracker.detect(frame.image)
         confirmed = stabilizer.update(hand_obs.gesture, hand_obs.confidence)
         action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
-        pause_required = profile.gesture_thresholds.get("right_open_palm")
         # Leaky integrator for the palm-hold pause toggle: tolerates short
         # detection gaps (briefly losing the hand, mediapipe glitches, brief
         # finger flicker) so the bar that fills on screen actually corresponds
         # to a real toggle.
-        required_palm_frames = pause_required.stability_frames if pause_required is not None else 60
-        if hand_obs.gesture in {"right_open_palm", "left_open_palm"}:
-            pause_score = min(required_palm_frames + 6.0, pause_score + 1.0)
-        elif hand_obs.gesture == "none":
-            pause_score = max(0.0, pause_score - 0.5)
-        else:
-            pause_score = max(0.0, pause_score - 2.0)
-        pause_progress = min(1.0, pause_score / required_palm_frames) if required_palm_frames > 0 else 0.0
-        if pause_score >= required_palm_frames and not pause_hold_fired:
-            confirmed = "right_open_palm"
-            action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
-            pause_hold_fired = True
-            pause_score = 0.0  # next hold must start from scratch
+        pause_confirmed, pause_progress = pause_hold.update(
+            hand_obs.gesture,
+            profile.gesture_bindings,
+            profile.gesture_thresholds,
+        )
+        if pause_confirmed is not None:
+            confirmed = pause_confirmed
             stabilizer.reset()  # let the next post-pause click rearm cleanly
-        if pause_score <= required_palm_frames * 0.25:
-            pause_hold_fired = False
+        else:
+            confirmed = suppress_open_palm_toggle_without_hold(
+                confirmed,
+                profile.gesture_bindings,
+            )
+        action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
         debug = gaze_tracker.last_debug
         gaze_source = "pupil" if debug.pupil_detected else "iris" if debug.iris_detected else "no eyes"
         fine_aim_text = " fine" if fine_aim.active else ""

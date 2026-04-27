@@ -214,9 +214,9 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         self._camera_preview.setFixedSize(392, 220)
         self._camera_preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
-        hint = QtWidgets.QLabel("Gesture: hold right open palm for 2s to toggle active/paused.")
-        hint.setWordWrap(True)
-        hint.setObjectName("fhHint")
+        self._hint = QtWidgets.QLabel("Gesture: hold right open palm for 2s to toggle active/paused.")
+        self._hint.setWordWrap(True)
+        self._hint.setObjectName("fhHint")
         self._last_action = QtWidgets.QLabel("Last action: -")
         self._last_action.setObjectName("fhAction")
         self._pause_progress = QtWidgets.QProgressBar()
@@ -265,7 +265,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         layout.addWidget(self._last_action)
         layout.addWidget(self._pause_progress)
         layout.addWidget(bindings_scroll)
-        layout.addWidget(hint)
+        layout.addWidget(self._hint)
 
         self._detail_widgets = [
             self._camera_preview,
@@ -277,7 +277,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             self._pause_progress,
             self._status,
             self._bindings_scroll,
-            hint,
+            self._hint,
         ]
 
         self.setStyleSheet(f"""
@@ -351,6 +351,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         if action:
             self._clear_duplicate_action(gesture, action)
         self._saved_bindings = self._selected_bindings()
+        self._hint.setText(self._pause_hint(self._saved_bindings))
         self.bindings_saved.emit(dict(self._saved_bindings))
 
     def _clear_duplicate_action(self, source_gesture: str, action: str) -> None:
@@ -462,6 +463,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
     def set_bindings(self, bindings: dict[str, str]) -> None:
         self._saved_bindings = dict(bindings)
+        self._hint.setText(self._pause_hint(bindings))
         self._updating_bindings = True
         try:
             for gesture, combo in self._binding_combos.items():
@@ -470,3 +472,10 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
                 combo.setCurrentIndex(index if index >= 0 else 0)
         finally:
             self._updating_bindings = False
+
+    @staticmethod
+    def _pause_hint(bindings: dict[str, str]) -> str:
+        for gesture, label in GESTURE_LABELS.items():
+            if bindings.get(gesture) == "toggle_pause":
+                return f"Gesture: hold {label} for 2s to toggle active/paused."
+        return "Gesture: no pause gesture is currently assigned."

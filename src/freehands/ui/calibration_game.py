@@ -479,8 +479,9 @@ GESTURE_ALIASES = {
     "pointing_up": {"pointing_up", "left_pointing_up", "right_pointing_up"},
     "middle_up": {"middle_up", "left_middle_up", "right_middle_up"},
     "two_fingers_up": {"two_fingers_up", "left_two_fingers_up", "right_two_fingers_up"},
-    "right_open_palm": {"right_open_palm", "left_open_palm", "open_palm"},
+    "right_open_palm": {"right_open_palm"},
 }
+INSTANT_GESTURE_TARGETS = {"pointing_up", "middle_up", "two_fingers_up"}
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -913,6 +914,16 @@ class CalibrationWindow(QtWidgets.QMainWindow):
                 "median_conf": round(median_conf, 3),
                 "frames_to_lock": frames_to_lock,
             }
+            if gesture in INSTANT_GESTURE_TARGETS:
+                # Mouse-button gestures are edge-triggered by the stabilizer;
+                # calibration may take many frames to guide the user, but the
+                # runtime threshold must stay instant so clicks do not feel held.
+                self._profile.gesture_thresholds[gesture] = GestureThreshold(
+                    confidence_min=0.50,
+                    stability_frames=1,
+                )
+                lines.append(f"  {gesture}: instant button conf>=0.50, frames>=1")
+                continue
             if detected:
                 # Lower the bar slightly toward the user's actual confidence,
                 # but never below 0.55 and never above 0.95.

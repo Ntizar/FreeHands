@@ -38,6 +38,32 @@ GESTURE_BINDING_PRIORITY = [
     "fist_pause",
 ]
 
+INSTANT_MOUSE_GESTURES = (
+    "pointing_up",
+    "middle_up",
+    "two_fingers_up",
+    "left_pointing_up",
+    "right_pointing_up",
+    "left_middle_up",
+    "right_middle_up",
+    "left_two_fingers_up",
+    "right_two_fingers_up",
+)
+
+CLICK_FAMILY_GESTURES = {
+    "click": ("pointing_up", "left_pointing_up", "right_pointing_up"),
+    "right_click": ("middle_up", "left_middle_up", "right_middle_up"),
+    "double_click": ("two_fingers_up", "left_two_fingers_up", "right_two_fingers_up"),
+}
+
+ESSENTIAL_GESTURE_BINDINGS = {
+    "pointing_up": "click",
+    "middle_up": "right_click",
+    "two_fingers_up": "double_click",
+}
+
+LEGACY_UNDETECTABLE_GESTURES = {"tongue_out"}
+
 
 class GestureThreshold(BaseModel):
     confidence_min: float = DEFAULT_GESTURE_CONFIDENCE
@@ -158,6 +184,51 @@ def _dedupe_bindings(bindings: dict[str, str]) -> None:
             seen_actions.add(action)
 
 
+def _has_detectable_action(bindings: dict[str, str], detectable_gestures: set[str], action: str) -> bool:
+    return any(bindings.get(gesture) == action for gesture in detectable_gestures)
+
+
+def _custom_non_family_click_actions(bindings: dict[str, str]) -> set[str]:
+    actions: set[str] = set()
+    for action, family_gestures in CLICK_FAMILY_GESTURES.items():
+        family = set(family_gestures)
+        for gesture, bound_action in bindings.items():
+            if gesture in LEGACY_UNDETECTABLE_GESTURES:
+                continue
+            if bound_action == action and gesture not in family:
+                actions.add(action)
+    return actions
+
+
+def _repair_instant_mouse_thresholds(profile: Profile) -> None:
+    for gesture in INSTANT_MOUSE_GESTURES:
+        current = profile.gesture_thresholds.get(gesture)
+        if current is None or current.stability_frames > 3 or current.confidence_min > 0.75:
+            profile.gesture_thresholds[gesture] = GestureThreshold(stability_frames=1, confidence_min=0.50)
+
+
+def _repair_essential_bindings(bindings: dict[str, str], detectable_gestures: set[str]) -> None:
+    for gesture in LEGACY_UNDETECTABLE_GESTURES:
+        bindings[gesture] = ""
+
+    for gesture in INSTANT_MOUSE_GESTURES:
+        if bindings.get(gesture) == "toggle_pause":
+            bindings[gesture] = ""
+
+    if not _has_detectable_action(bindings, detectable_gestures, "toggle_pause"):
+        bindings["right_open_palm"] = "toggle_pause"
+
+    for action, gestures in CLICK_FAMILY_GESTURES.items():
+        generic_gesture = gestures[0]
+        if any(bindings.get(gesture) == action for gesture in gestures):
+            bindings[generic_gesture] = action
+            for side_gesture in gestures[1:]:
+                if bindings.get(side_gesture) == action:
+                    bindings[side_gesture] = ""
+        elif not _has_detectable_action(bindings, detectable_gestures, action):
+            bindings[generic_gesture] = action
+
+
 def load_profile(user_id: str) -> Profile:
     path = profile_path(user_id)
     if not path.exists():
@@ -165,22 +236,19 @@ def load_profile(user_id: str) -> Profile:
             f"Profile '{user_id}' not found. Run: freehands calibrate --user {user_id}"
         )
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    raw_bindings = data.get("gesture_bindings", {})
+    explicit_bindings = set(raw_bindings) if isinstance(raw_bindings, dict) else set()
+    has_custom_pause_binding = isinstance(raw_bindings, dict) and any(
+        gesture != "right_open_palm"
+        and gesture not in INSTANT_MOUSE_GESTURES
+        and action == "toggle_pause"
+        for gesture, action in raw_bindings.items()
+    )
     profile = Profile.model_validate(data)
     defaults = Profile(user_id=user_id)
     for gesture, threshold in defaults.gesture_thresholds.items():
         profile.gesture_thresholds.setdefault(gesture, threshold)
-    for gesture in (
-        "pointing_up", "middle_up", "two_fingers_up",
-        "left_pointing_up", "right_pointing_up",
-        "left_middle_up", "right_middle_up",
-        "left_two_fingers_up", "right_two_fingers_up",
-    ):
-        _migrate_threshold_if_default(
-            profile,
-            gesture,
-            GestureThreshold(stability_frames=1, confidence_min=0.50),
-            ((8, 0.85), (5, 0.75), (3, 0.70), (2, 0.60), (1, 0.50)),
-        )
+    _repair_instant_mouse_thresholds(profile)
     _migrate_threshold_if_default(
         profile,
         "left_open_palm",
@@ -195,22 +263,19 @@ def load_profile(user_id: str) -> Profile:
     )
     for gesture, action in defaults.gesture_bindings.items():
         profile.gesture_bindings.setdefault(gesture, action)
-    for gesture, action in {
-        "left_pointing_up": "",
-        "right_pointing_up": "",
-        "left_middle_up": "",
-        "right_middle_up": "",
-        "left_two_fingers_up": "",
-        "right_two_fingers_up": "",
-        "left_open_palm": "",
-    }.items():
-        if profile.gesture_bindings.get(gesture) in {"click", "right_click", "double_click", "undo"}:
-            profile.gesture_bindings[gesture] = ""
-        else:
-            profile.gesture_bindings.setdefault(gesture, action)
-    profile.gesture_bindings.setdefault("right_open_palm", "toggle_pause")
+    custom_non_family_actions = _custom_non_family_click_actions(raw_bindings) if isinstance(raw_bindings, dict) else set()
+    for action in custom_non_family_actions:
+        generic_gesture = CLICK_FAMILY_GESTURES[action][0]
+        if generic_gesture not in explicit_bindings:
+            profile.gesture_bindings[generic_gesture] = ""
+    if has_custom_pause_binding and "right_open_palm" not in explicit_bindings:
+        profile.gesture_bindings["right_open_palm"] = ""
+    profile.gesture_bindings.setdefault("left_open_palm", "")
     profile.gesture_bindings["fist_pause"] = ""
+    detectable_gestures = set(defaults.gesture_thresholds)
+    _repair_essential_bindings(profile.gesture_bindings, detectable_gestures)
     _dedupe_bindings(profile.gesture_bindings)
+    _repair_essential_bindings(profile.gesture_bindings, detectable_gestures)
     return profile
 
 

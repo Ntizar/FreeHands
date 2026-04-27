@@ -38,8 +38,10 @@ class GestureStabilizer:
 
     def update(self, gesture: str, confidence: float) -> str | None:
         gesture_key = self._gesture_key(gesture)
+        required, threshold = self._per_gesture.get(gesture_key, (self._required, self._threshold))
+        rearm_key = gesture_key if confidence >= threshold else "none"
         if self._last_emitted_key is not None:
-            if gesture_key == self._last_emitted_key:
+            if rearm_key == self._last_emitted_key:
                 self._release_frames = 0
             else:
                 self._release_frames += 1

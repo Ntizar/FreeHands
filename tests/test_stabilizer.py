@@ -112,6 +112,22 @@ def test_single_noisy_frame_does_not_rearm_held_gesture():
     assert s.update("pointing_up", 0.9) is None
 
 
+def test_low_confidence_same_gesture_rearms_click() -> None:
+    s = GestureStabilizer(required_frames=1, confidence_min=0.5, rearm_frames=1)
+
+    assert s.update("pointing_up", 0.9) == "pointing_up"
+    assert s.update("pointing_up", 0.1) is None
+    assert s.update("pointing_up", 0.9) == "pointing_up"
+
+
+def test_held_confident_click_gesture_does_not_repeat() -> None:
+    s = GestureStabilizer(required_frames=1, confidence_min=0.5, rearm_frames=1)
+
+    assert s.update("pointing_up", 0.9) == "pointing_up"
+    assert s.update("pointing_up", 0.9) is None
+    assert s.update("pointing_up", 0.9) is None
+
+
 def test_none_never_emits():
     s = GestureStabilizer(required_frames=3, confidence_min=0.5)
     s.update("none", 1.0)

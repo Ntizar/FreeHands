@@ -209,10 +209,18 @@ class HandTracker:
     # ── classification ────────────────────────────────────────────────────
     def _classify(self, pts: np.ndarray, handedness: str = "") -> tuple[GestureId, float]:
         # Finger "extended" tests use y comparison vs PIP joint (image space)
-        index_up   = pts[INDEX_TIP, 1]  < pts[INDEX_PIP, 1]
-        middle_up  = pts[MIDDLE_TIP, 1] < pts[MIDDLE_PIP, 1]
-        ring_up    = pts[RING_TIP, 1]   < pts[RING_PIP, 1]
-        pinky_up   = pts[PINKY_TIP, 1]  < pts[PINKY_PIP, 1]
+        index_delta = pts[INDEX_PIP, 1] - pts[INDEX_TIP, 1]
+        middle_delta = pts[MIDDLE_PIP, 1] - pts[MIDDLE_TIP, 1]
+        ring_delta = pts[RING_PIP, 1] - pts[RING_TIP, 1]
+        pinky_delta = pts[PINKY_PIP, 1] - pts[PINKY_TIP, 1]
+
+        index_up = index_delta > 0.0
+        middle_up = middle_delta > 0.0
+        ring_up = ring_delta > 0.0
+        pinky_up = pinky_delta > 0.0
+        index_strong = index_delta > 0.04
+        middle_strong = middle_delta > 0.04
+        middle_ambiguous = 0.0 < middle_delta <= 0.04
 
         thumb_up_dir   = pts[THUMB_TIP, 1] < pts[THUMB_IP, 1] - 0.02
         thumb_down_dir = pts[THUMB_TIP, 1] > pts[THUMB_IP, 1] + 0.02
@@ -228,9 +236,9 @@ class HandTracker:
         if folded_others and thumb_down_dir:
             return "thumb_down", 0.92
 
-        if index_up and middle_up and not any([ring_up, pinky_up]):
+        if index_strong and middle_strong and not any([ring_up, pinky_up]):
             return self._with_side("two_fingers_up", handedness), 0.90
-        if index_up and not any([middle_up, ring_up, pinky_up]):
+        if index_up and not any([ring_up, pinky_up]) and (not middle_up or middle_ambiguous):
             return self._with_side("pointing_up", handedness), 0.90
         if middle_up and not any([index_up, ring_up, pinky_up]):
             return self._with_side("middle_up", handedness), 0.88
@@ -261,7 +269,7 @@ class HandTracker:
         if handedness == "Right":
             return f"right_{gesture}"  # type: ignore[return-value]
         if gesture == "open_palm":
-            return "right_open_palm"
+            return "open_palm"
         return gesture
 
     def close(self) -> None:

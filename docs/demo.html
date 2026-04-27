@@ -32,10 +32,13 @@
       <span class="pill">Demo en navegador</span>
       <h1>Aim-trainer de calibración</h1>
       <p class="lead">
-        Vamos a calibrar tu mirada usando <b>WebGazer.js</b>. Te aparecerán puntos
-        naranjas: <b>míralos y haz clic</b>. Cuanto más puntos completes, más precisa
-        será la predicción.
+        Vamos a calibrar tu mirada como en la app local: primero esquinas, después
+        puntos de ajuste. Mira el punto naranja y haz clic sobre él.
       </p>
+      <label class="profile-field">
+        Usuario
+        <input id="user-name" type="text" value="Ntizar" maxlength="32" autocomplete="off" />
+      </label>
       <ul class="checklist">
         <li>📷 Permite el acceso a la webcam cuando lo pida.</li>
         <li>💡 Asegúrate de tener buena luz frontal.</li>
@@ -69,6 +72,7 @@
       <p>Error medio estimado: <b id="r-rms">— px</b></p>
       <div class="cta-row">
         <button id="start-gestures" class="btn btn-primary">👋 Probar ronda de gestos</button>
+        <a id="test-ducks" href="duck-hunt.html" class="btn btn-accent">🦆 Test con patitos</a>
         <button id="restart" class="btn btn-ghost">Repetir mirada</button>
         <a href="index.html" class="btn btn-ghost">Volver</a>
       </div>

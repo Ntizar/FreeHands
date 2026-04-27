@@ -20,15 +20,18 @@
     rRms:     $('r-rms'),
     diag:     $('diag'),
     preview:  $('webcam-preview'),
+    userName: $('user-name'),
+    testDucks: $('test-ducks'),
   };
 
   const NORMALIZED_POINTS = [
-    [0.08, 0.10], [0.50, 0.10], [0.92, 0.10],
-    [0.08, 0.50], [0.50, 0.50], [0.92, 0.50],
-    [0.08, 0.90], [0.50, 0.90], [0.92, 0.90],
-    [0.25, 0.30], [0.75, 0.30], [0.25, 0.70], [0.75, 0.70],
+    [0.00, 0.00], [1.00, 0.00], [1.00, 1.00], [0.00, 1.00],
+    [0.50, 0.50],
+    [0.50, 0.08], [0.92, 0.50], [0.50, 0.92], [0.08, 0.50],
+    [0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75],
+    [0.50, 0.30], [0.70, 0.50], [0.50, 0.70], [0.30, 0.50],
   ];
-  const SAMPLES_PER_POINT = 3;
+  const SAMPLES_PER_POINT = 1;
   const HIT_RADIUS_PX = 75;
 
   let plan = [];
@@ -36,6 +39,19 @@
   let errors = [];
   let webgazerReady = false;
   let cameraStream = null;
+
+  function getUserName() {
+    const raw = (ui.userName && ui.userName.value || localStorage.getItem('freehands:user') || 'Ntizar').trim();
+    return raw || 'Ntizar';
+  }
+
+  function saveUserName() {
+    const user = getUserName();
+    localStorage.setItem('freehands:user', user);
+    if (ui.userName) ui.userName.value = user;
+    if (ui.testDucks) ui.testDucks.href = `duck-hunt.html?user=${encodeURIComponent(user)}`;
+    return user;
+  }
 
   // ── Diagnostics box ────────────────────────────────────────────────
   function showDiag(html, kind = 'info') {
@@ -104,16 +120,12 @@
   // ── Aim-trainer plan ───────────────────────────────────────────────
   function buildPlan() {
     const w = window.innerWidth, h = window.innerHeight;
-    const margin = 90;
+    const margin = 42;
     const pts = [];
     for (const [nx, ny] of NORMALIZED_POINTS) {
       const px = Math.round(margin + nx * (w - 2 * margin));
       const py = Math.round(margin + ny * (h - 2 * margin));
       for (let i = 0; i < SAMPLES_PER_POINT; i++) pts.push([px, py]);
-    }
-    for (let i = pts.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pts[i], pts[j]] = [pts[j], pts[i]];
     }
     return pts;
   }
@@ -161,6 +173,8 @@
       ui.arena.classList.add('hidden');
       ui.result.classList.remove('hidden');
       ui.rPoints.textContent = String(idx);
+      const user = saveUserName();
+      ui.testDucks.href = `duck-hunt.html?user=${encodeURIComponent(user)}`;
       if (errors.length) {
         const rms = Math.sqrt(errors.reduce((a, b) => a + b * b, 0) / errors.length);
         ui.rRms.textContent = `${Math.round(rms)} px`;
@@ -213,6 +227,7 @@
   // ── Public actions ─────────────────────────────────────────────────
   async function start() {
     clearDiag();
+    saveUserName();
     ui.welcome.classList.add('hidden');
     ui.arena.classList.remove('hidden');
     updateHUD('PIDIENDO PERMISO DE CÁMARA…');
@@ -276,6 +291,9 @@
 
   // ── wire up ─────────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
+    if (ui.userName) ui.userName.value = localStorage.getItem('freehands:user') || ui.userName.value || 'Ntizar';
+    saveUserName();
+    ui.userName?.addEventListener('input', saveUserName);
     $('start').addEventListener('click', start);
     $('check-cam').addEventListener('click', checkCamera);
     $('finish').addEventListener('click', finish);

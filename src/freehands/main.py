@@ -10,7 +10,7 @@ from .actions import ActionDispatcher
 from .capture import Camera
 from .config import DEFAULT_GESTURE_CONFIDENCE, DEFAULT_STABILITY_FRAMES, TARGET_FPS
 from .fusion import MultimodalFusion, State
-from .gaze import GazeRegressor, GazeTracker
+from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import load_profile
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
@@ -20,30 +20,30 @@ from .voice import VoiceListener
 def run_system(user_id: str, voice_enabled: bool = True) -> int:
     # ── Auto-onboarding: if no profile or no gaze model, calibrate first ──
     from .profiles.store import profile_path
-    from .ui.calibration_game import run_calibration
+    from .ui.calibration_game import run_calibration, run_gaze_calibration
 
-    needs_calibration = False
+    calibration_mode: str | None = None
     if not profile_path(user_id).exists():
         print(f"[FreeHands] No existe perfil para '{user_id}'. Lanzando calibración…")
-        needs_calibration = True
+        calibration_mode = "full"
     else:
         try:
             tmp = load_profile(user_id)
-            if not tmp.gaze_model.weights_x:
-                print(f"[FreeHands] El perfil '{user_id}' no tiene modelo de mirada. Lanzando calibración…")
-                needs_calibration = True
+            if not tmp.gaze_model.weights_x or not gaze_model_is_usable(tmp.gaze_model):
+                print(f"[FreeHands] El perfil '{user_id}' no tiene una mirada válida. Lanzando recalibración de mirada…")
+                calibration_mode = "gaze"
         except Exception as e:
             print(f"[FreeHands] No se pudo leer el perfil ({e}). Lanzando calibración…")
-            needs_calibration = True
+            calibration_mode = "full"
 
-    if needs_calibration:
-        rc = run_calibration(user_id=user_id)
+    if calibration_mode is not None:
+        rc = run_calibration(user_id=user_id) if calibration_mode == "full" else run_gaze_calibration(user_id=user_id)
         if rc != 0:
             print("[FreeHands] Calibración cancelada o fallida. Saliendo.")
             return rc
 
     profile = load_profile(user_id)
-    if not profile.gaze_model.weights_x:
+    if not profile.gaze_model.weights_x or not gaze_model_is_usable(profile.gaze_model):
         print(f"[FreeHands] Aún no hay modelo de mirada para '{user_id}'. "
               f"Vuelve a ejecutar la calibración.")
         return 1
@@ -93,6 +93,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     panel.pause_clicked.connect(pause_system)
     panel.quit_clicked.connect(app.quit)
     panel.set_state(fusion.sm.state)
+    panel.set_bindings(profile.gesture_bindings)
     panel.show()
 
     if voice_enabled and profile.voice_enabled:
@@ -135,6 +136,14 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         # Hand
         hand_obs = hand_tracker.detect(frame.image)
         confirmed = stabilizer.update(hand_obs.gesture, hand_obs.confidence)
+        action = profile.gesture_bindings.get(confirmed, "") if confirmed else ""
+        debug = gaze_tracker.last_debug
+        gaze_source = "pupila" if debug.pupil_detected else "iris" if debug.iris_detected else "sin ojos"
+        cursor_text = f"{cursor[0]},{cursor[1]}" if cursor else "-"
+        panel.set_runtime_info(
+            f"Mirada: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}",
+            f"Mano: {hand_obs.gesture} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
+        )
 
         # Fusion
         result = fusion.step(cursor, confirmed)

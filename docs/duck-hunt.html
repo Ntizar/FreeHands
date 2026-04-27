@@ -22,12 +22,24 @@
   </header>
 
   <main id="duck-game" class="duck-game">
+    <div class="duck-retro-bg" aria-hidden="true">
+      <div class="duck-sky"></div>
+      <div class="duck-tree"><span></span><span></span><span></span></div>
+      <div class="duck-bush bush-a"></div>
+      <div class="duck-bush bush-b"></div>
+      <div class="duck-grass"></div>
+    </div>
     <canvas id="duck-canvas"></canvas>
     <div id="duck-shot-layer" class="duck-shot-layer"></div>
     <video id="duck-video" autoplay muted playsinline></video>
     <div id="duck-gesture" class="duck-gesture glass">Mano: preparada</div>
+    <section class="duck-help glass">
+      <strong id="duck-user">FreeHands</strong>
+      <span>Mira al pato y dispara levantando el índice. También puedes probar con clic o espacio.</span>
+      <span>Los patos van lentos para medir si la mirada sigue el objetivo antes de acelerar.</span>
+    </section>
     <div class="duck-hud glass">
-      <strong id="duck-score">0 / 50</strong>
+      <strong id="duck-score">0 / 30</strong>
       <span id="duck-status">Preparado</span>
       <button id="duck-start" class="btn btn-primary">Iniciar</button>
     </div>

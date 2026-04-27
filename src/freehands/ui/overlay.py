@@ -81,7 +81,10 @@ class GazeOverlay(QtWidgets.QWidget):
 
         if self._action_flash:
             p.setPen(QtGui.QColor(PALETTE.text_primary))
-            font = p.font(); font.setPointSize(11); font.setBold(True); p.setFont(font)
+            font = p.font()
+            font.setPointSize(11)
+            font.setBold(True)
+            p.setFont(font)
             p.drawText(x + 32, y + 6, f"⟶ {self._action_flash}")
 
     def _draw_state_badge(self, p: QtGui.QPainter) -> None:
@@ -105,7 +108,10 @@ class GazeOverlay(QtWidgets.QWidget):
         p.drawRoundedRect(rect, 18, 18)
 
         p.setPen(QtGui.QColor(color))
-        font = p.font(); font.setPointSize(10); font.setBold(True); p.setFont(font)
+        font = p.font()
+        font.setPointSize(10)
+        font.setBold(True)
+        p.setFont(font)
         p.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, f"FreeHands · {text}")
 
 
@@ -122,7 +128,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             QtCore.Qt.WindowType.WindowStaysOnTopHint | QtCore.Qt.WindowType.Tool,
         )
         self.setWindowTitle("FreeHands")
-        self.setFixedWidth(310)
+        self.setFixedWidth(360)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -149,10 +155,22 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         hint = QtWidgets.QLabel("Gesto: puño cerrado alterna activar/desactivar.")
         hint.setWordWrap(True)
         hint.setObjectName("fhHint")
+        self._gaze = QtWidgets.QLabel("Mirada: esperando")
+        self._gaze.setObjectName("fhRuntime")
+        self._gaze.setWordWrap(True)
+        self._gesture = QtWidgets.QLabel("Mano: esperando")
+        self._gesture.setObjectName("fhRuntime")
+        self._gesture.setWordWrap(True)
+        self._bindings = QtWidgets.QLabel("")
+        self._bindings.setObjectName("fhBindings")
+        self._bindings.setWordWrap(True)
 
         layout.addWidget(title)
         layout.addWidget(self._status)
         layout.addLayout(row)
+        layout.addWidget(self._gaze)
+        layout.addWidget(self._gesture)
+        layout.addWidget(self._bindings)
         layout.addWidget(hint)
 
         self.setStyleSheet(f"""
@@ -165,6 +183,8 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             QLabel#fhTitle {{ font-size: 13px; font-weight: 700; color: {PALETTE.blue}; }}
             QLabel#fhStatus {{ font-size: 22px; font-weight: 800; padding: 4px 0; }}
             QLabel#fhHint {{ color: {PALETTE.text_secondary}; font-size: 11px; }}
+            QLabel#fhRuntime {{ color: {PALETTE.text_primary}; font-size: 11px; font-weight: 700; }}
+            QLabel#fhBindings {{ color: {PALETTE.text_secondary}; font-size: 10px; line-height: 1.25; }}
             QPushButton {{
                 border: 1px solid rgba(30, 91, 255, 0.25);
                 border-radius: 8px;
@@ -186,3 +206,30 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         )
         self._activate.setEnabled(not active)
         self._pause.setEnabled(active)
+
+    def set_runtime_info(self, gaze: str, gesture: str) -> None:
+        self._gaze.setText(gaze)
+        self._gesture.setText(gesture)
+
+    def set_bindings(self, bindings: dict[str, str]) -> None:
+        labels = {
+            "pointing_up": "Indice",
+            "middle_up": "Medio",
+            "two_fingers_up": "Indice+medio",
+            "two_hands_together": "Manos juntas",
+            "two_hands_apart": "Manos separadas",
+            "fist_pause": "Puño",
+        }
+        action_labels = {
+            "click": "clic",
+            "right_click": "clic derecho",
+            "double_click": "doble clic",
+            "zoom_in": "zoom +",
+            "zoom_out": "zoom -",
+            "toggle_pause": "activar/pausar",
+        }
+        rows = []
+        for gesture, label in labels.items():
+            action = action_labels.get(bindings.get(gesture, ""), bindings.get(gesture, "-"))
+            rows.append(f"{label}: {action}")
+        self._bindings.setText(" · ".join(rows))

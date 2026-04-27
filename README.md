@@ -21,7 +21,7 @@ FreeHands permite controlar el ordenador sin teclado ni ratón combinando:
 | 👅 **Gestos faciales / lengua** | Comandos rápidos secundarios |
 | 🎙️ **Voz (Whisper local)** | Dictado y comandos largos |
 
-El usuario calibra el sistema **una sola vez** jugando un minijuego de puntería, y a partir de ahí cada perfil se guarda en `~/.freehands/profiles/{user}.json`.
+El usuario calibra el sistema con un minijuego de puntería, y a partir de ahí cada perfil se guarda en la carpeta local de la app, por ejemplo `%LOCALAPPDATA%\Ntizar\FreeHands\profiles\Ntizar.json` en Windows.
 
 > **Principio rector:** prevención de falsos positivos > suavidad de interacción.
 > Es preferible que el sistema se sienta "rígido" antes de activar acciones no pedidas.
@@ -73,6 +73,7 @@ FreeHands.bat run                   (arranca el sistema, usuario por defecto: Nt
 FreeHands.bat calibrate             (mirada + gestos)
 FreeHands.bat gaze                  (recalibra sólo mirada)
 FreeHands.bat gestures              (recalibra sólo gestos, conserva la mirada)
+FreeHands.bat camera                (elige la cámara y guarda el índice en el perfil)
 FreeHands.bat doctor                (diagnóstico de cámara/micro/dependencias)
 FreeHands.bat run otro_usuario      (otro perfil)
 ```
@@ -94,13 +95,16 @@ pip install -r requirements.txt
 python -m freehands calibrate --user Ntizar
 python -m freehands calibrate-gaze --user Ntizar
 python -m freehands calibrate-gestures --user Ntizar
+python -m freehands camera --user Ntizar
 python -m freehands run --user Ntizar
 ```
 
 ### Demo web (sin instalar nada)
 
-Abre **[ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)** → *Probar demo*.
-Usa **WebGazer.js** y todo el procesamiento ocurre en tu navegador.
+Abre **[ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)** → *Calibrar y probar patitos*.
+La demo pide usuario, calibra primero las esquinas y luego puntos de ajuste, y después abre
+un test tipo Duck Hunt con patos lentos. Usa **WebGazer.js** y todo el procesamiento ocurre
+en tu navegador.
 
 ### Voz (Phase 3 local)
 
@@ -151,10 +155,14 @@ Por defecto FreeHands usa `faster_whisper` porque es más ligero para comandos c
 
 Inspirado en `aim_botz` de Counter-Strike. Cuatro fases:
 
-1. **Calibración de mirada** — 9-13 puntos, 3 muestras cada uno → entrena un modelo de **ridge regression** personalizado.
-2. **Ronda de gestos** — `thumb_up`, `thumb_down`, `pinch_close`, `fist_pause`; muestra preview de cámara + landmarks y ajusta umbrales por perfil.
+1. **Calibración de mirada** — empieza por las 4 esquinas, sigue con puntos de ajuste y entrena un modelo **ridge regression** personalizado con pupila/iris + nariz como referencia.
+2. **Ronda de gestos** — repite cada gesto dos veces para calcular umbrales robustos: índice = clic, dedo medio = clic derecho, índice+medio = doble clic, manos juntas = zoom +, manos separadas = zoom -, puño = activar/pausar.
 3. **Voz local** — comandos en español con wake word (`FreeHands` / `Ntizar`) usando faster-whisper.
 4. **Validación final** — tareas reales sin ratón. Si el éxito < 80 %, sugiere recalibrar.
+
+La versión actual de mirada usa `feature_version=3`, así que los perfiles antiguos se consideran
+obsoletos y `run` abrirá una recalibración de mirada automáticamente. En la ventana de control
+verás si la app está usando pupila oscura, iris, cursor estimado y el gesto activo.
 
 La mirada y los gestos se pueden recalibrar por separado. El perfil guarda `gaze_calibrated_at`,
 `gesture_calibrated_at` y `gesture_calibration_results`, de modo que no tienes que repetir todo

@@ -3,9 +3,9 @@ import { FilesetResolver, GestureRecognizer } from 'https://cdn.jsdelivr.net/npm
 
 const $ = (id) => document.getElementById(id);
 
-const TOTAL_DUCKS = 50;
-const PASS_SCORE = 45;
-const HIT_RADIUS = 118;
+const TOTAL_DUCKS = 30;
+const PASS_SCORE = 22;
+const HIT_RADIUS = 132;
 const POINTING_CONFIDENCE = 0.50;
 const SHOT_COOLDOWN_MS = 520;
 
@@ -24,6 +24,11 @@ let audioCtx = null;
 
 function setStatus(text) { $('duck-status').textContent = text; }
 function setScore() { $('duck-score').textContent = `${score} / ${TOTAL_DUCKS}`; }
+
+function currentUser() {
+  const params = new URLSearchParams(location.search);
+  return params.get('user') || localStorage.getItem('freehands:user') || 'Ntizar';
+}
 
 function setGestureLabel(text) {
   const el = $('duck-gesture');
@@ -118,8 +123,8 @@ function makeDuck() {
   group.add(eye);
 
   group.userData = {
-    speed: 1.8 + Math.random() * 1.8,
-    amp: 10 + Math.random() * 16,
+    speed: 0.65 + Math.random() * 0.85,
+    amp: 8 + Math.random() * 12,
     phase: Math.random() * Math.PI * 2,
   };
   return group;
@@ -130,7 +135,7 @@ function spawnDuck() {
   const duck = makeDuck();
   const direction = Math.random() > 0.5 ? 1 : -1;
   duck.position.x = direction > 0 ? -innerWidth / 2 - 80 : innerWidth / 2 + 80;
-  duck.position.y = -innerHeight * 0.30 + Math.random() * innerHeight * 0.60;
+  duck.position.y = -innerHeight * 0.12 + Math.random() * innerHeight * 0.48;
   duck.scale.x = direction;
   duck.userData.direction = direction;
   scene.add(duck);
@@ -219,10 +224,10 @@ function finishIfNeeded() {
   if (spawned >= TOTAL_DUCKS && ducks.length === 0) {
     running = false;
     const passed = score >= PASS_SCORE;
-    $('duck-title').textContent = passed ? '45/50 desbloqueado' : 'Ajuste pendiente';
+    $('duck-title').textContent = passed ? 'Test superado' : 'Ajuste pendiente';
     $('duck-copy').textContent = passed
-      ? `Has acertado ${score} de ${TOTAL_DUCKS}. Este perfil está listo para subir precisión.`
-      : `Has acertado ${score} de ${TOTAL_DUCKS}. Repite una ronda corta y ajustamos sensibilidad.`;
+      ? `${currentUser()}, has acertado ${score} de ${TOTAL_DUCKS}. La mirada + índice están listos para subir velocidad.`
+      : `${currentUser()}, has acertado ${score} de ${TOTAL_DUCKS}. Repite mirada o prueba con más luz antes de acelerar.`;
     $('duck-result').classList.remove('hidden');
   }
 }
@@ -234,7 +239,7 @@ function animate(now = 0) {
     return;
   }
 
-  if (spawned < TOTAL_DUCKS && (ducks.length < 4 || Math.random() < 0.018)) spawnDuck();
+  if (spawned < TOTAL_DUCKS && (ducks.length < 2 || Math.random() < 0.008)) spawnDuck();
 
   for (const duck of [...ducks]) {
     duck.position.x += duck.userData.direction * duck.userData.speed;
@@ -254,7 +259,8 @@ function animate(now = 0) {
 async function start() {
   $('duck-result').classList.add('hidden');
   $('duck-start').disabled = true;
-  setStatus('Cargando');
+  localStorage.setItem('freehands:user', currentUser());
+  setStatus(`Cargando · ${currentUser()}`);
   if (!renderer) setupThree();
   score = 0; spawned = 0; ducks.forEach((d) => scene.remove(d)); ducks = [];
   gazeActive = false;
@@ -299,6 +305,8 @@ addEventListener('keydown', (ev) => { if (running && ev.code === 'Space') shoot(
 addEventListener('pointermove', (ev) => { if (!gazeActive) updateAim(ev.clientX, ev.clientY); });
 
 document.addEventListener('DOMContentLoaded', () => {
+  const userLabel = $('duck-user');
+  if (userLabel) userLabel.textContent = `FreeHands · ${currentUser()}`;
   setupThree();
   animate();
   $('duck-start').addEventListener('click', start);

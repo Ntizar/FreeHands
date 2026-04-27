@@ -27,12 +27,13 @@ COOLDOWN_MS_AFTER_ACTION = 500
 PAUSE_GESTURE_HOLD_MS = 1000
 
 # ── Calibration minigame ───────────────────────────────────────────────────
-# Fast test profile: 10 clicks total. Later, raise SAMPLES_PER_POINT or add
-# more points for precision once the interaction loop feels good.
+# Gaze calibration uses a denser point map, but each visible point is confirmed
+# once after a short stable gaze window instead of repeating the same point.
 CALIBRATION_POINTS = [
-    (0.08, 0.10), (0.50, 0.10), (0.92, 0.10),
-    (0.08, 0.50), (0.50, 0.50), (0.92, 0.50),
-    (0.08, 0.90), (0.50, 0.90), (0.92, 0.90),
-    (0.50, 0.30),
+    (0.00, 0.00), (1.00, 0.00), (1.00, 1.00), (0.00, 1.00),
+    (0.50, 0.50),
+    (0.50, 0.08), (0.92, 0.50), (0.50, 0.92), (0.08, 0.50),
+    (0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75),
+    (0.50, 0.30), (0.70, 0.50), (0.50, 0.70), (0.30, 0.50),
 ]
 SAMPLES_PER_POINT = 1

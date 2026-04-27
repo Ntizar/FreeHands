@@ -67,7 +67,22 @@ class Camera:
             self._thread.join(timeout=1.0)
         self._cap.release()
 
+    def reopen(self) -> None:
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        self._cap.release()
+        with self._lock:
+            self._latest = None
+        self._cap = self._open_capture(self._index)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, name="CameraThread", daemon=True)
+        self._thread.start()
+
     def switch(self, index: int) -> None:
+        if index == self._index:
+            self.reopen()
+            return
         new_cap = self._open_capture(index)
         self._stop.set()
         if self._thread.is_alive():

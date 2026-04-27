@@ -24,6 +24,7 @@ class GestureThreshold(BaseModel):
 
 class GazeModel(BaseModel):
     type: str = "ridge_regression"
+    feature_version: int = 1
     weights_x: list[float] = Field(default_factory=list)
     weights_y: list[float] = Field(default_factory=list)
     bias_x: float = 0.0

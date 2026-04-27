@@ -152,7 +152,7 @@ class CameraSelector(QtWidgets.QWidget):
         self.gaze_info.setText(
             f"Mirada: {debug.message}\n"
             f"cara={debug.face_detected} landmarks={debug.landmark_count} "
-            f"iris={debug.iris_detected} conf={debug.confidence:.2f}"
+            f"iris={debug.iris_detected} pupila={debug.pupil_detected} conf={debug.confidence:.2f}"
         )
         self.hand_info.setText(f"Manos: {hand_obs.gesture} · {hand_obs.confidence:.2f} · manos={len(hand_obs.hands)}")
         if gaze_features is not None:

@@ -8,7 +8,7 @@ def test_default_profile_uses_right_open_palm_for_pause() -> None:
     assert profile.gesture_bindings["right_open_palm"] == "toggle_pause"
     assert profile.gesture_bindings["left_open_palm"] == "undo"
     assert profile.gesture_bindings["fist_pause"] == ""
-    assert profile.gesture_thresholds["two_fingers_up"].stability_frames == 2
+    assert profile.gesture_thresholds["two_fingers_up"].stability_frames == 1
     assert profile.gesture_thresholds["left_open_palm"].stability_frames == 10
     assert profile.gesture_thresholds["right_open_palm"].stability_frames == 60
 
@@ -81,6 +81,18 @@ def test_right_open_palm_resumes_from_idle() -> None:
 
     assert result.fired_action == "resume"
     assert result.state is State.ACTIVE
+
+
+def test_toggle_pause_can_be_mapped_to_another_gesture() -> None:
+    profile = Profile(user_id="test")
+    profile.gesture_bindings["left_open_palm"] = "toggle_pause"
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step((320, 240), "left_open_palm")
+
+    assert result.fired_action == "toggle_pause"
+    assert result.state is State.IDLE
 
 
 def test_left_open_palm_fires_undo_when_active() -> None:

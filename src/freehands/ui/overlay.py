@@ -7,6 +7,42 @@ from ..fusion import State
 from .theme import PALETTE
 
 
+GESTURE_LABELS = {
+    "thumb_up": "Thumb up",
+    "thumb_down": "Thumb down",
+    "pointing_up": "Index",
+    "middle_up": "Middle",
+    "two_fingers_up": "Index+middle",
+    "left_pointing_up": "Left index",
+    "right_pointing_up": "Right index",
+    "left_middle_up": "Left middle",
+    "right_middle_up": "Right middle",
+    "left_two_fingers_up": "Left index+middle",
+    "right_two_fingers_up": "Right index+middle",
+    "two_hands_together": "Hands together",
+    "two_hands_apart": "Hands apart",
+    "pinch_open": "Pinch open",
+    "pinch_close": "Pinch close",
+    "left_open_palm": "Left palm",
+    "right_open_palm": "Right palm",
+    "fist_pause": "Closed fist",
+}
+
+ACTION_OPTIONS = {
+    "": "off",
+    "click": "click",
+    "right_click": "right click",
+    "double_click": "double click",
+    "scroll_up": "scroll up",
+    "scroll_down": "scroll down",
+    "zoom_in": "zoom +",
+    "zoom_out": "zoom -",
+    "escape": "escape",
+    "undo": "undo",
+    "toggle_pause": "active/pause",
+}
+
+
 class GazeOverlay(QtWidgets.QWidget):
     """Frameless, click-through overlay drawn over the entire primary screen."""
 
@@ -121,6 +157,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
     activate_clicked = QtCore.pyqtSignal()
     pause_clicked = QtCore.pyqtSignal()
     swap_handedness_clicked = QtCore.pyqtSignal()
+    binding_changed = QtCore.pyqtSignal(str, str)
     quit_clicked = QtCore.pyqtSignal()
 
     def __init__(self, user_id: str) -> None:
@@ -129,7 +166,9 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             QtCore.Qt.WindowType.WindowStaysOnTopHint | QtCore.Qt.WindowType.Tool,
         )
         self.setWindowTitle("FreeHands")
-        self.setFixedWidth(360)
+        self.setFixedWidth(420)
+        self._binding_combos: dict[str, QtWidgets.QComboBox] = {}
+        self._updating_bindings = False
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -157,7 +196,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
         self._camera_preview = QtWidgets.QLabel("Camera preview")
         self._camera_preview.setObjectName("fhCamera")
-        self._camera_preview.setFixedSize(332, 188)
+        self._camera_preview.setFixedSize(392, 220)
         self._camera_preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         hint = QtWidgets.QLabel("Gesture: hold right open palm for 2s to toggle active/paused.")
@@ -176,9 +215,29 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         self._gesture = QtWidgets.QLabel("Hand: waiting")
         self._gesture.setObjectName("fhRuntime")
         self._gesture.setWordWrap(True)
-        self._bindings = QtWidgets.QLabel("")
-        self._bindings.setObjectName("fhBindings")
-        self._bindings.setWordWrap(True)
+        bindings_scroll = QtWidgets.QScrollArea()
+        bindings_scroll.setObjectName("fhBindingsScroll")
+        bindings_scroll.setWidgetResizable(True)
+        bindings_scroll.setFixedHeight(250)
+        bindings_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        bindings_box = QtWidgets.QGroupBox("Gesture actions")
+        bindings_box.setObjectName("fhBindingsBox")
+        bindings_grid = QtWidgets.QGridLayout(bindings_box)
+        bindings_grid.setContentsMargins(8, 8, 8, 8)
+        bindings_grid.setHorizontalSpacing(8)
+        bindings_grid.setVerticalSpacing(4)
+        for row_index, (gesture, label) in enumerate(GESTURE_LABELS.items()):
+            gesture_label = QtWidgets.QLabel(label)
+            gesture_label.setObjectName("fhBindingLabel")
+            combo = QtWidgets.QComboBox()
+            combo.setObjectName("fhBindingCombo")
+            for action, action_label in ACTION_OPTIONS.items():
+                combo.addItem(action_label, action)
+            combo.currentIndexChanged.connect(lambda _index, g=gesture: self._emit_binding_changed(g))
+            self._binding_combos[gesture] = combo
+            bindings_grid.addWidget(gesture_label, row_index, 0)
+            bindings_grid.addWidget(combo, row_index, 1)
+        bindings_scroll.setWidget(bindings_box)
 
         layout.addWidget(title)
         layout.addWidget(self._status)
@@ -189,7 +248,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         layout.addWidget(self._gesture)
         layout.addWidget(self._last_action)
         layout.addWidget(self._pause_progress)
-        layout.addWidget(self._bindings)
+        layout.addWidget(bindings_scroll)
         layout.addWidget(hint)
 
         self.setStyleSheet(f"""
@@ -212,7 +271,25 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             QLabel#fhHint {{ color: {PALETTE.text_secondary}; font-size: 11px; }}
             QLabel#fhRuntime {{ color: {PALETTE.text_primary}; font-size: 11px; font-weight: 700; }}
             QLabel#fhAction {{ color: {PALETTE.orange}; font-size: 12px; font-weight: 800; }}
-            QLabel#fhBindings {{ color: {PALETTE.text_secondary}; font-size: 10px; line-height: 1.25; }}
+            QGroupBox#fhBindingsBox {{
+                border: 1px solid rgba(30, 91, 255, 0.16);
+                border-radius: 8px;
+                margin-top: 8px;
+                padding-top: 10px;
+                font-size: 11px;
+                font-weight: 800;
+                color: {PALETTE.blue};
+            }}
+            QScrollArea#fhBindingsScroll {{ border: none; background: transparent; }}
+            QLabel#fhBindingLabel {{ color: {PALETTE.text_primary}; font-size: 10px; font-weight: 700; }}
+            QComboBox#fhBindingCombo {{
+                border: 1px solid rgba(30, 91, 255, 0.18);
+                border-radius: 6px;
+                background: white;
+                padding: 3px 6px;
+                font-size: 10px;
+                min-height: 20px;
+            }}
             QProgressBar {{
                 border: 1px solid rgba(30, 91, 255, 0.18);
                 border-radius: 6px;
@@ -236,6 +313,13 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
         self.move(screen.right() - self.width() - 24, screen.top() + 72)
+
+    def _emit_binding_changed(self, gesture: str) -> None:
+        if self._updating_bindings:
+            return
+        combo = self._binding_combos[gesture]
+        action = combo.currentData() or ""
+        self.binding_changed.emit(gesture, action)
 
     def set_state(self, state: State) -> None:
         active = state != State.IDLE
@@ -305,29 +389,11 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         self._swap_handedness.setText("Swap L/R: on" if enabled else "Swap L/R: off")
 
     def set_bindings(self, bindings: dict[str, str]) -> None:
-        labels = {
-            "left_pointing_up": "Left index",
-            "right_pointing_up": "Right index",
-            "left_middle_up": "Left middle",
-            "right_middle_up": "Right middle",
-            "left_two_fingers_up": "Left index+middle",
-            "right_two_fingers_up": "Right index+middle",
-            "two_hands_together": "Hands together",
-            "two_hands_apart": "Hands apart",
-            "left_open_palm": "Left palm",
-            "right_open_palm": "Right palm",
-        }
-        action_labels = {
-            "click": "click",
-            "right_click": "right click",
-            "double_click": "double click",
-            "zoom_in": "zoom +",
-            "zoom_out": "zoom -",
-            "undo": "undo",
-            "toggle_pause": "active/pause",
-        }
-        rows = []
-        for gesture, label in labels.items():
-            action = action_labels.get(bindings.get(gesture, ""), bindings.get(gesture, "-"))
-            rows.append(f"{label}: {action}")
-        self._bindings.setText(" · ".join(rows))
+        self._updating_bindings = True
+        try:
+            for gesture, combo in self._binding_combos.items():
+                action = bindings.get(gesture, "")
+                index = combo.findData(action)
+                combo.setCurrentIndex(index if index >= 0 else 0)
+        finally:
+            self._updating_bindings = False

@@ -158,6 +158,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         required_frames=DEFAULT_STABILITY_FRAMES,
         confidence_min=DEFAULT_GESTURE_CONFIDENCE,
         per_gesture=gesture_thresholds,
+        rearm_frames=1,
     )
     fusion = MultimodalFusion(profile)
     dispatcher = ActionDispatcher()
@@ -165,6 +166,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     fine_aim = FineAimPointer()
     last_pointer_move_at = 0.0
     last_pointer_xy: tuple[int, int] | None = None
+    pause_hold_fired = False
 
     overlay = GazeOverlay()
     overlay.show()
@@ -180,6 +182,12 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         panel.set_handedness_swapped(profile.swap_handedness)
         overlay.flash_action("swap L/R on" if profile.swap_handedness else "swap L/R off")
 
+    def update_gesture_binding(gesture: str, action: str) -> None:
+        profile.gesture_bindings[gesture] = action
+        save_profile(profile)
+        overlay.flash_action(f"{gesture}: {action or 'off'}")
+        panel.set_last_action(f"mapping {gesture} -> {action or 'off'}")
+
     def activate_system() -> None:
         fusion.sm.activate()
         overlay.flash_action("FreeHands active")
@@ -193,6 +201,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     panel.activate_clicked.connect(activate_system)
     panel.pause_clicked.connect(pause_system)
     panel.swap_handedness_clicked.connect(toggle_handedness_swap)
+    panel.binding_changed.connect(update_gesture_binding)
     panel.quit_clicked.connect(app.quit)
     panel.set_state(fusion.sm.state)
     panel.set_bindings(profile.gesture_bindings)
@@ -228,7 +237,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy
+        nonlocal last_pointer_move_at, last_pointer_xy, pause_hold_fired
         frame = camera.read()
         if frame is None:
             return
@@ -249,6 +258,12 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         pause_progress = 0.0
         if hand_obs.gesture == "right_open_palm" and pause_required is not None:
             pause_progress = min(1.0, stabilizer.hold_progress("right_open_palm", pause_required.stability_frames))
+            if pause_progress >= 1.0 and not pause_hold_fired:
+                confirmed = "right_open_palm"
+                action = profile.gesture_bindings.get(confirmed, "")
+                pause_hold_fired = True
+        else:
+            pause_hold_fired = False
         debug = gaze_tracker.last_debug
         gaze_source = "pupil" if debug.pupil_detected else "iris" if debug.iris_detected else "no eyes"
         fine_aim_text = " fine" if fine_aim.active else ""

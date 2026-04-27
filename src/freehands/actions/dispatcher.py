@@ -28,16 +28,20 @@ class ActionDispatcher:
         if action not in ACTIONS:
             return False
 
+        click_xy: tuple[int, int] | None = None
         if at_xy is not None and action in {"click", "right_click", "double_click"}:
             x, y = self._safe_xy(at_xy)
-            pyautogui.moveTo(x, y, duration=0.02)
+            click_xy = (x, y)
 
         if action == "click":
-            pyautogui.click()
+            pyautogui.click(*click_xy) if click_xy is not None else pyautogui.click()
         elif action == "right_click":
-            pyautogui.rightClick()
+            pyautogui.rightClick(*click_xy) if click_xy is not None else pyautogui.rightClick()
         elif action == "double_click":
-            pyautogui.click(clicks=2, interval=0.12)
+            if click_xy is not None:
+                pyautogui.click(*click_xy, clicks=2, interval=0.10)
+            else:
+                pyautogui.click(clicks=2, interval=0.10)
         elif action == "escape":
             pyautogui.press("escape")
         elif action == "zoom_in":

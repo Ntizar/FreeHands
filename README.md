@@ -73,7 +73,9 @@ Profiles are stored locally under `%LOCALAPPDATA%\Ntizar\FreeHands\profiles` on 
 
 When the local app is active, gaze moves the real Windows pointer at a throttled rate. If your gaze stays inside the same screen zone for about one second, FreeHands switches into fine aim and damps the pointer around that target to make precise clicks easier. Click gestures are direct and fast: raising the index finger emits a normal OS click without waiting for dwell or a long cooldown. Side jitter is folded back to the generic click gesture, so a momentary left/right hand flip should not make clicks disappear. Safety gestures stay slower.
 
-The control panel stays in the top-right corner and shows the live mirrored camera preview, detected hand landmarks, detected hand side, last fired action and a pause-hold progress bar. If your camera reports left and right backwards, press `Swap L/R`; the setting is saved in your local profile.
+The control panel stays in the top-right corner and shows the live mirrored camera preview, detected hand landmarks, detected hand side, last fired action and a pause-hold progress bar. If your camera reports left and right backwards, press `Swap L/R`; the setting is saved in your local profile. The same panel includes a visual gesture-action editor: choose an action for each gesture and the profile is saved immediately.
+
+Index, middle and two-finger gestures use one-frame detection and one-frame release rearming. In practice, lowering and raising the finger again should produce repeated OS clicks with timing close to a normal mouse tap.
 
 | Gesture | Default action |
 | --- | --- |

@@ -84,7 +84,7 @@ When the local app is active, gaze moves the real Windows pointer at a throttled
 
 The small control panel shows the current state, gaze source, confidence, cursor position and detected gesture. The transparent overlay shows the gaze cursor and dwell ring. Move the mouse to a screen corner to trigger the PyAutoGUI failsafe if you need to abort quickly.
 
-## Browser Demo And Duck Test
+## Browser Demo And Local Duck Test
 
 Open [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/) and choose the browser demo.
 
@@ -94,9 +94,11 @@ The browser flow:
 2. Click `Switch camera` if the preview is frozen or the wrong camera is selected.
 3. Look at each orange target and click it.
 4. Calibration is saved in browser `localStorage`.
-5. Open the Duck test and shoot by looking at a duck, then raising your index finger.
+5. Open the Duck test when you want to validate the desktop app.
 
 The web version uses WebGazer.js for gaze and MediaPipe Tasks Vision for gestures. It runs on HTTPS and does not upload video frames.
+
+The Duck test deliberately does not use browser gaze or browser gestures. It is a normal pointer-and-click web game: start FreeHands Desktop locally, activate it, move the Windows pointer with gaze, then use the index-click gesture to shoot. That way the score measures the local system, not a second browser-only recognizer.
 
 ## Playing Games
 

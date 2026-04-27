@@ -6,7 +6,6 @@
   <title>FreeHands · Duck test</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css" />
-  <script src="assets/webgazer-loader.js" defer></script>
 </head>
 <body class="duck-body">
   <header class="nav glass duck-nav">
@@ -31,17 +30,15 @@
     </div>
     <canvas id="duck-canvas"></canvas>
     <div id="duck-shot-layer" class="duck-shot-layer"></div>
-    <video id="duck-video" autoplay muted playsinline></video>
-    <div id="duck-gesture" class="duck-gesture glass">Hand: ready</div>
+    <div id="duck-gesture" class="duck-gesture glass">Local app: ready</div>
     <section class="duck-help glass">
       <strong id="duck-user">FreeHands</strong>
-      <span>Look at a duck and shoot by raising your index finger. Click and Space also work.</span>
-      <span>Ducks rise from the bottom at different speeds to test vertical tracking.</span>
+      <span>Start FreeHands Desktop, activate it, look at a duck, then use your index-click gesture.</span>
+      <span>This page does not use browser gaze or browser gestures; it only listens for normal pointer movement and clicks.</span>
     </section>
     <div class="duck-hud glass">
       <strong id="duck-score">0 / 30</strong>
       <span id="duck-status">Ready</span>
-      <button id="duck-camera" class="btn btn-ghost btn-sm">Camera</button>
       <button id="duck-start" class="btn btn-primary">Start</button>
     </div>
     <div id="duck-crosshair" class="duck-crosshair"></div>

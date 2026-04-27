@@ -11,6 +11,9 @@ from ..profiles import Profile
 from .state_machine import State, StateMachine
 
 
+DIRECT_POINTER_ACTIONS = {"click", "right_click", "double_click"}
+
+
 @dataclass
 class FusionResult:
     cursor_xy: tuple[int, int] | None
@@ -79,10 +82,20 @@ class MultimodalFusion:
                 self._contradiction_buf.clear()
                 return FusionResult(cursor_xy, self.sm.state, 0.0, None)
 
+            bindings = self.profile.gesture_bindings
+            candidate_action = bindings.get(confirmed_gesture)
+            if (
+                self.profile.pointer_control_enabled
+                and candidate_action in DIRECT_POINTER_ACTIONS
+                and self.sm.state in {State.ACTIVE, State.CONFIRMING}
+            ):
+                self._last_action_at = now
+                self.sm.trigger_cooldown()
+                return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action)
+
             if self.sm.state == State.CONFIRMING:
-                bindings = self.profile.gesture_bindings
-                action = bindings.get(confirmed_gesture)
-                if action:
+                if candidate_action:
+                    action = candidate_action
                     self._last_action_at = now
                     self.sm.trigger_cooldown()
 

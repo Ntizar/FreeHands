@@ -36,6 +36,8 @@ class GestureStabilizer:
             return None
 
         recent = list(self._buf)[-required:]
+        if self._last_emitted is not None and all(g != self._last_emitted for g, _ in recent):
+            self._last_emitted = None
         first = recent[0][0]
         if first == "none" or any(g != first for g, _ in recent):
             return None

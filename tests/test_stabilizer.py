@@ -36,6 +36,32 @@ def test_edge_trigger_no_repeat_until_change():
     assert s.update("thumb_up", 0.9) is None
 
 
+def test_rearms_same_gesture_after_release():
+    s = GestureStabilizer(required_frames=3, confidence_min=0.5)
+    s.update("pointing_up", 0.9)
+    s.update("pointing_up", 0.9)
+    assert s.update("pointing_up", 0.9) == "pointing_up"
+
+    s.update("none", 0.0)
+    s.update("none", 0.0)
+    s.update("none", 0.0)
+    s.update("pointing_up", 0.9)
+    s.update("pointing_up", 0.9)
+    assert s.update("pointing_up", 0.9) == "pointing_up"
+
+
+def test_single_noisy_frame_does_not_rearm_held_gesture():
+    s = GestureStabilizer(required_frames=3, confidence_min=0.5)
+    s.update("pointing_up", 0.9)
+    s.update("pointing_up", 0.9)
+    assert s.update("pointing_up", 0.9) == "pointing_up"
+
+    s.update("none", 0.0)
+    s.update("pointing_up", 0.9)
+    s.update("pointing_up", 0.9)
+    assert s.update("pointing_up", 0.9) is None
+
+
 def test_none_never_emits():
     s = GestureStabilizer(required_frames=3, confidence_min=0.5)
     s.update("none", 1.0)

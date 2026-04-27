@@ -7,9 +7,9 @@
 ![platform](https://img.shields.io/badge/platform-Windows%20first-blue)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
-Browser demo: [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)
+Local Duck test: [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/)
 
-FreeHands is built for accessibility experiments, productivity workflows and playful hands-free interaction. The desktop app can move the real Windows pointer from gaze, then execute actions through confirmed gestures. The web demo lets anyone calibrate gaze in the browser and try the Duck test without installing anything.
+FreeHands is built for accessibility experiments, productivity workflows and playful hands-free interaction. The desktop app can move the real Windows pointer from gaze, then execute actions through confirmed gestures. GitHub Pages is only the Duck test, so success there validates the local desktop app instead of a separate browser recognizer.
 
 ## What It Does
 
@@ -71,7 +71,7 @@ Profiles are stored locally under `%LOCALAPPDATA%\Ntizar\FreeHands\profiles` on 
 
 ## Desktop Control
 
-When the local app is active, gaze moves the real Windows pointer at a throttled rate. Gestures confirm actions:
+When the local app is active, gaze moves the real Windows pointer at a throttled rate. If your gaze stays inside the same screen zone for about one second, FreeHands switches into fine aim and damps the pointer around that target to make precise clicks easier. Gestures confirm actions:
 
 | Gesture | Default action |
 | --- | --- |
@@ -84,21 +84,19 @@ When the local app is active, gaze moves the real Windows pointer at a throttled
 
 The small control panel shows the current state, gaze source, confidence, cursor position and detected gesture. The transparent overlay shows the gaze cursor and dwell ring. Move the mouse to a screen corner to trigger the PyAutoGUI failsafe if you need to abort quickly.
 
-## Browser Demo And Local Duck Test
+## Pages And Local Duck Test
 
-Open [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/) and choose the browser demo.
+Open [ntizar.github.io/FreeHands](https://ntizar.github.io/FreeHands/). The Pages root redirects directly to the Duck test and keeps the selected user in the URL or browser storage.
 
-The browser flow:
+The intended flow:
 
-1. Allow camera access.
-2. Click `Switch camera` if the preview is frozen or the wrong camera is selected.
-3. Look at each orange target and click it.
-4. Calibration is saved in browser `localStorage`.
-5. Open the Duck test when you want to validate the desktop app.
+1. Run `FreeHands.bat run Ntizar` locally.
+2. Complete calibration if the profile asks for it.
+3. Activate FreeHands Desktop.
+4. Open the Pages Duck test.
+5. Look at a duck and use the index-click gesture.
 
-The web version uses WebGazer.js for gaze and MediaPipe Tasks Vision for gestures. It runs on HTTPS and does not upload video frames.
-
-The Duck test deliberately does not use browser gaze or browser gestures. It is a normal pointer-and-click web game: start FreeHands Desktop locally, activate it, move the Windows pointer with gaze, then use the index-click gesture to shoot. That way the score measures the local system, not a second browser-only recognizer.
+The Duck test deliberately does not use browser gaze, browser gestures or the camera. It is a normal pointer-and-click web game: start FreeHands Desktop locally, activate it, move the Windows pointer with gaze, then use the index-click gesture to shoot. That way the score measures the local system, not a second browser-only recognizer.
 
 ## Playing Games
 
@@ -175,18 +173,18 @@ Main components:
 | [src/freehands/gestures](src/freehands/gestures) | MediaPipe hand tracking and gesture stabilization. |
 | [src/freehands/fusion](src/freehands/fusion) | State machine and multimodal safety logic. |
 | [src/freehands/ui](src/freehands/ui) | PyQt6 calibration, camera selector and always-on overlay. |
-| [docs](docs) | GitHub Pages demo, browser calibration and Duck test. |
+| [docs](docs) | GitHub Pages Duck test and optional browser diagnostic files. |
 
 ## Privacy
 
-The desktop app processes camera frames locally. The browser demo processes frames in the browser. Profiles and calibration data stay on the user's machine unless they intentionally share files.
+The desktop app processes camera frames locally. The Pages Duck test does not use the camera. Profiles and calibration data stay on the user's machine unless they intentionally share files.
 
 External downloads can happen for dependencies and ML models:
 
 | Dependency | Why |
 | --- | --- |
 | MediaPipe models | Hand and face/gaze tracking assets. |
-| WebGazer.js | Browser gaze demo. |
+| WebGazer.js | Optional browser diagnostic page. |
 | faster-whisper model | Optional local voice commands. |
 
 ## Development

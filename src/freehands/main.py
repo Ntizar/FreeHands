@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import time
+from collections import deque
 
 from PyQt6 import QtCore, QtWidgets
 
@@ -11,6 +12,10 @@ from .capture import Camera
 from .config import (
     DEFAULT_GESTURE_CONFIDENCE,
     DEFAULT_STABILITY_FRAMES,
+    POINTER_FINE_AIM_ALPHA,
+    POINTER_FINE_AIM_HOLD_MS,
+    POINTER_FINE_AIM_RADIUS_PX,
+    POINTER_FINE_AIM_RELEASE_PX,
     POINTER_MOVE_INTERVAL_MS,
     POINTER_MOVE_MIN_DELTA_PX,
     TARGET_FPS,
@@ -21,6 +26,85 @@ from .gestures import GestureStabilizer, HandTracker
 from .profiles import load_profile
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .voice import VoiceListener
+
+
+class FineAimPointer:
+    def __init__(self) -> None:
+        self._hold_seconds = POINTER_FINE_AIM_HOLD_MS / 1000
+        self._samples: deque[tuple[float, tuple[int, int]]] = deque(
+            maxlen=TARGET_FPS * 2,
+        )
+        self._anchor: tuple[float, float] | None = None
+
+    @property
+    def active(self) -> bool:
+        return self._anchor is not None
+
+    def reset(self) -> None:
+        self._samples.clear()
+        self._anchor = None
+
+    def update(self, cursor_xy: tuple[int, int]) -> tuple[int, int]:
+        now = time.monotonic()
+        self._samples.append((now, cursor_xy))
+        while self._samples and now - self._samples[0][0] > self._hold_seconds * 2:
+            self._samples.popleft()
+
+        if self._anchor is None:
+            stable_samples = self._stable_samples(now)
+            if not self._has_stable_zone(now, stable_samples):
+                return cursor_xy
+            self._anchor = self._centroid(stable_samples)
+            return self._rounded_anchor()
+
+        if self._distance_squared(cursor_xy, self._anchor) > POINTER_FINE_AIM_RELEASE_PX ** 2:
+            self.reset()
+            self._samples.append((now, cursor_xy))
+            return cursor_xy
+
+        target = self._centroid(self._stable_samples(now) or list(self._samples))
+        anchor_x, anchor_y = self._anchor
+        target_x, target_y = target
+        self._anchor = (
+            anchor_x + (target_x - anchor_x) * POINTER_FINE_AIM_ALPHA,
+            anchor_y + (target_y - anchor_y) * POINTER_FINE_AIM_ALPHA,
+        )
+        return self._rounded_anchor()
+
+    def _stable_samples(self, now: float) -> list[tuple[float, tuple[int, int]]]:
+        return [
+            (sample_at, sample)
+            for sample_at, sample in self._samples
+            if now - sample_at <= self._hold_seconds
+        ]
+
+    def _has_stable_zone(self, now: float, samples: list[tuple[float, tuple[int, int]]]) -> bool:
+        min_samples = max(5, int(TARGET_FPS * self._hold_seconds * 0.75))
+        if len(samples) < min_samples or now - samples[0][0] < self._hold_seconds * 0.95:
+            return False
+        center = self._centroid(samples)
+        radius_squared = POINTER_FINE_AIM_RADIUS_PX ** 2
+        return all(self._distance_squared(sample, center) <= radius_squared for _, sample in samples)
+
+    def _centroid(self, samples: list[tuple[float, tuple[int, int]]]) -> tuple[float, float]:
+        count = len(samples)
+        center_x = sum(sample[0] for _, sample in samples) / count
+        center_y = sum(sample[1] for _, sample in samples) / count
+        return center_x, center_y
+
+    def _rounded_anchor(self) -> tuple[int, int]:
+        if self._anchor is None:
+            raise RuntimeError("fine aim anchor is not set")
+        return round(self._anchor[0]), round(self._anchor[1])
+
+    @staticmethod
+    def _distance_squared(
+        a: tuple[int, int] | tuple[float, float],
+        b: tuple[int, int] | tuple[float, float],
+    ) -> float:
+        delta_x = a[0] - b[0]
+        delta_y = a[1] - b[1]
+        return delta_x * delta_x + delta_y * delta_y
 
 
 def run_system(user_id: str, voice_enabled: bool = True) -> int:
@@ -77,6 +161,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     fusion = MultimodalFusion(profile)
     dispatcher = ActionDispatcher()
     voice_listener: VoiceListener | None = None
+    fine_aim = FineAimPointer()
     last_pointer_move_at = 0.0
     last_pointer_xy: tuple[int, int] | None = None
 
@@ -141,6 +226,10 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         # Gaze
         feats = gaze_tracker.extract(frame.image)
         cursor = regressor.predict(feats.vector) if feats else None
+        if cursor is not None and fusion.sm.state != State.IDLE:
+            cursor = fine_aim.update(cursor)
+        else:
+            fine_aim.reset()
 
         # Hand
         hand_obs = hand_tracker.detect(frame.image)
@@ -148,7 +237,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         action = profile.gesture_bindings.get(confirmed, "") if confirmed else ""
         debug = gaze_tracker.last_debug
         gaze_source = "pupil" if debug.pupil_detected else "iris" if debug.iris_detected else "no eyes"
-        cursor_text = f"{cursor[0]},{cursor[1]}" if cursor else "-"
+        fine_aim_text = " fine" if fine_aim.active else ""
+        cursor_text = f"{cursor[0]},{cursor[1]}{fine_aim_text}" if cursor else "-"
         panel.set_runtime_info(
             f"Gaze: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}",
             f"Hand: {hand_obs.gesture} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
@@ -159,6 +249,10 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state)
         panel.set_state(result.state)
+
+        if result.state == State.IDLE:
+            fine_aim.reset()
+            last_pointer_xy = None
 
         if profile.pointer_control_enabled and result.cursor_xy is not None and result.state != State.IDLE:
             now = time.monotonic()

@@ -3,130 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FreeHands · Hands-free PC control with gaze, gestures and voice</title>
-  <meta name="description" content="Multimodal hands-free screen control with gaze, hand gestures and voice. Ntizar liquid-glass design system." />
+  <title>FreeHands · Local duck test</title>
+  <meta name="description" content="FreeHands GitHub Pages opens the local desktop Duck test only." />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css" />
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const user = params.get('user') || window.localStorage.getItem('freehands:user') || 'Ntizar';
+    window.localStorage.setItem('freehands:user', user);
+    window.location.replace(`duck-hunt.html?user=${encodeURIComponent(user)}`);
+  </script>
 </head>
-<body>
-  <div class="bg-orbs">
-    <span class="orb orb-blue"></span>
-    <span class="orb orb-orange"></span>
-    <span class="orb orb-blue-2"></span>
-  </div>
-
-  <header class="nav glass">
-    <div class="brand">
-      <span class="brand-dot"></span>
-      <span class="brand-name">FreeHands</span>
-      <span class="brand-by">by Ntizar</span>
+<body class="duck-body">
+  <main class="duck-game">
+    <div class="duck-retro-bg" aria-hidden="true">
+      <div class="duck-sky"></div>
+      <div class="duck-tree"><span></span><span></span><span></span></div>
+      <div class="duck-bush bush-a"></div>
+      <div class="duck-bush bush-b"></div>
+      <div class="duck-grass"></div>
     </div>
-    <nav>
-      <a href="#features">Features</a>
-      <a href="#how">How it works</a>
-      <a href="demo.html" class="btn btn-ghost">Try demo</a>
-      <a href="duck-hunt.html" class="btn btn-ghost">Local duck test</a>
-      <a href="https://github.com/Ntizar/FreeHands" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
-    </nav>
-  </header>
-
-  <main>
-    <section class="hero">
-      <div class="hero-text glass card">
-        <span class="pill">v0.1 · MVP Phase 1</span>
-        <h1>Control your screen<br/><span class="grad">without hands.</span></h1>
-        <p class="lead">
-          FreeHands combines <b>gaze</b>, <b>hand gestures</b> and <b>voice</b> with
-          anti-false-positive layers built for accessibility, productivity and play.
-          It calibrates in minutes with an aim-trainer style flow.
-        </p>
-        <div class="cta-row">
-          <a href="demo.html" class="btn btn-primary btn-lg">Try browser demo</a>
-          <a href="duck-hunt.html" class="btn btn-ghost btn-lg">Test the desktop app</a>
-          <a href="https://github.com/Ntizar/FreeHands#quick-start" class="btn btn-accent btn-lg" target="_blank" rel="noopener">Desktop app</a>
-        </div>
-        <p class="micro">Demo: WebGazer.js · runs in your browser · no video frames leave your device.</p>
-      </div>
-
-      <aside class="hero-card glass card">
-        <div class="mock">
-          <div class="mock-cursor"><span></span></div>
-          <div class="mock-ring"></div>
-          <div class="mock-badge">FreeHands · ACTIVE</div>
-          <div class="mock-target"></div>
-          <div class="mock-target t2"></div>
-          <div class="mock-target t3"></div>
-        </div>
-        <div class="mock-caption">
-          <span class="dot dot-blue"></span> Gaze cursor
-          <span class="dot dot-orange"></span> Dwell ring
-        </div>
-      </aside>
-    </section>
-
-    <section id="features" class="features">
-      <h2>A safety layer for every false positive</h2>
-      <div class="grid">
-        <article class="glass card feat">
-          <div class="feat-ico">🛰️</div><h3>State machine</h3>
-          <p><code>IDLE -> ACTIVE -> CONFIRMING -> COOLDOWN</code>. Actions pass through explicit confirmation.</p>
-        </article>
-        <article class="glass card feat">
-          <div class="feat-ico">🎯</div><h3>Multi-frame stability</h3>
-          <p>A gesture only counts after repeated matching frames and enough confidence.</p>
-        </article>
-        <article class="glass card feat">
-          <div class="feat-ico">🤝</div><h3>Multimodal confirmation</h3>
-          <p>Gaze plus gesture. Critical actions do not rely on one signal alone.</p>
-        </article>
-        <article class="glass card feat">
-          <div class="feat-ico">✋</div><h3>Always-on pause</h3>
-          <p>A closed fist can pause the system from any state.</p>
-        </article>
-        <article class="glass card feat">
-          <div class="feat-ico">👁️</div><h3>Personal calibration</h3>
-          <p>Ridge regression trained with an aim-trainer style minigame.</p>
-        </article>
-        <article class="glass card feat">
-          <div class="feat-ico">🔒</div><h3>Local by design</h3>
-          <p>Offline speech support and local camera processing. Privacy is the default.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="how" class="how">
-      <h2>Three signals, one control loop</h2>
-      <div class="how-grid">
-        <div class="glass card">
-          <span class="step">01</span><h3>Gaze</h3>
-          <p>FaceMesh + iris + nose/head cues -> personal ridge regression -> screen <b>(x, y)</b>.</p>
-        </div>
-        <div class="glass card">
-          <span class="step">02</span><h3>Gestures</h3>
-          <p>MediaPipe Hands -> index click · middle right click · two fingers double click · fist pause.</p>
-        </div>
-        <div class="glass card">
-          <span class="step">03</span><h3>Voice</h3>
-          <p>Local Whisper commands for activation, pause, click, zoom and navigation.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="closing glass card">
-      <h2>Ready to try it?</h2>
-      <p>The browser calibration demo uses WebGazer.js. The Duck test is different: it listens only for normal pointer movement and clicks, so it validates the desktop app.</p>
-      <div class="cta-row center">
-        <a href="demo.html" class="btn btn-primary btn-lg">Launch demo</a>
-        <a href="https://github.com/Ntizar/FreeHands" class="btn btn-ghost btn-lg" target="_blank" rel="noopener">View code</a>
-      </div>
+    <section class="duck-help glass">
+      <strong>FreeHands local duck test</strong>
+      <span>GitHub Pages opens only the Duck test. Start FreeHands Desktop locally, then continue here.</span>
+      <a class="btn btn-primary" href="duck-hunt.html?user=Ntizar">Open Duck test</a>
     </section>
   </main>
-
-  <footer>
-    <span>© 2026 Ntizar · MIT</span>
-    <span>Liquid-glass design · Light mode</span>
-  </footer>
 </body>
 </html>

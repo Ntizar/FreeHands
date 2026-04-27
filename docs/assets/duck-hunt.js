@@ -8,6 +8,7 @@ const PASS_SCORE = 22;
 const HIT_RADIUS = 132;
 const POINTING_CONFIDENCE = 0.50;
 const SHOT_COOLDOWN_MS = 520;
+const GAZE_CALIBRATION_KEY = 'freehands:gazeCalibration:v1';
 
 let renderer, scene, camera;
 let ducks = [];
@@ -20,6 +21,7 @@ let gestureRecognizer = null;
 let video = null;
 let gazeActive = false;
 let gestureActive = false;
+let gazeCalibrationModel = null;
 let audioCtx = null;
 
 function setStatus(text) { $('duck-status').textContent = text; }
@@ -66,12 +68,88 @@ function showShot(x, y, hit) {
   setTimeout(() => mark.remove(), 520);
 }
 
-function updateAim(x, y) {
-  gaze.x = x;
-  gaze.y = y;
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function updateAim(x, y, smooth = false) {
+  const nextX = clamp(Number.isFinite(x) ? x : gaze.x, 0, innerWidth - 1);
+  const nextY = clamp(Number.isFinite(y) ? y : gaze.y, 0, innerHeight - 1);
+  if (smooth) {
+    gaze.x = gaze.x * 0.55 + nextX * 0.45;
+    gaze.y = gaze.y * 0.55 + nextY * 0.45;
+  } else {
+    gaze.x = nextX;
+    gaze.y = nextY;
+  }
   const crosshair = $('duck-crosshair');
-  crosshair.style.left = `${x}px`;
-  crosshair.style.top = `${y}px`;
+  crosshair.style.left = `${gaze.x}px`;
+  crosshair.style.top = `${gaze.y}px`;
+}
+
+function solveLinear3(matrix, vector) {
+  const a = matrix.map((row, idx) => [...row, vector[idx]]);
+  for (let col = 0; col < 3; col++) {
+    let pivot = col;
+    for (let row = col + 1; row < 3; row++) {
+      if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row;
+    }
+    if (Math.abs(a[pivot][col]) < 1e-8) return null;
+    [a[col], a[pivot]] = [a[pivot], a[col]];
+    const div = a[col][col];
+    for (let k = col; k < 4; k++) a[col][k] /= div;
+    for (let row = 0; row < 3; row++) {
+      if (row === col) continue;
+      const factor = a[row][col];
+      for (let k = col; k < 4; k++) a[row][k] -= factor * a[col][k];
+    }
+  }
+  return [a[0][3], a[1][3], a[2][3]];
+}
+
+function buildAffineGazeModel(samples) {
+  const valid = samples.filter((s) => (
+    Number.isFinite(s.rawX) && Number.isFinite(s.rawY) &&
+    Number.isFinite(s.x) && Number.isFinite(s.y)
+  ));
+  if (valid.length < 6) return null;
+  const rawXs = valid.map((s) => s.rawX), rawYs = valid.map((s) => s.rawY);
+  const rawRange = Math.max(Math.max(...rawXs) - Math.min(...rawXs), Math.max(...rawYs) - Math.min(...rawYs));
+  if (rawRange < 24) return null;
+
+  const normal = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  const targetX = [0, 0, 0], targetY = [0, 0, 0];
+  for (const sample of valid) {
+    const row = [sample.rawX, sample.rawY, 1];
+    for (let r = 0; r < 3; r++) {
+      targetX[r] += row[r] * sample.x;
+      targetY[r] += row[r] * sample.y;
+      for (let c = 0; c < 3; c++) normal[r][c] += row[r] * row[c];
+    }
+  }
+  const wx = solveLinear3(normal, targetX);
+  const wy = solveLinear3(normal, targetY);
+  if (!wx || !wy) return null;
+  return { wx, wy, count: valid.length };
+}
+
+function loadGazeCalibration() {
+  try {
+    const payload = JSON.parse(localStorage.getItem(GAZE_CALIBRATION_KEY) || 'null');
+    if (!payload || payload.user !== currentUser() || !Array.isArray(payload.samples)) return null;
+    return buildAffineGazeModel(payload.samples);
+  } catch (_) {
+    return null;
+  }
+}
+
+function mapGazePrediction(data) {
+  if (!data || !gazeCalibrationModel) return null;
+  const { wx, wy } = gazeCalibrationModel;
+  const x = data.x * wx[0] + data.y * wx[1] + wx[2];
+  const y = data.x * wy[0] + data.y * wy[1] + wy[2];
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
 }
 
 function setupThree() {
@@ -171,13 +249,16 @@ async function setupCameraAndGestures() {
 async function setupGaze() {
   if (location.protocol !== 'https:') throw new Error('HTTPS requerido para mirada');
   if (!window.webgazer) throw new Error('WebGazer no cargó');
+  gazeCalibrationModel = loadGazeCalibration();
+  if (!gazeCalibrationModel) throw new Error('Calibracion web no encontrada');
   await window.webgazer
     .setRegression('ridge')
     .setGazeListener((data) => {
-      if (!data) return;
-      updateAim(data.x, data.y);
+      const mapped = mapGazePrediction(data);
+      if (!mapped) return;
+      updateAim(mapped.x, mapped.y, true);
     })
-    .saveDataAcrossSessions(false)
+    .saveDataAcrossSessions(true)
     .begin();
   try { window.webgazer.showVideoPreview(false); } catch (_) {}
   try { window.webgazer.showFaceOverlay(false); } catch (_) {}
@@ -281,10 +362,10 @@ async function start() {
     gazeActive = false;
   }
 
-  if (gazeActive && gestureActive) setStatus('Mirada + indice');
+  if (gazeActive && gestureActive) setStatus(`Mirada + indice (${gazeCalibrationModel.count} pts)`);
   else if (gazeActive) setStatus('Mirada + click');
-  else if (gestureActive) setStatus('Puntero + indice');
-  else setStatus('Puntero + click');
+  else if (gestureActive) setStatus('Puntero + indice · calibra mirada antes');
+  else setStatus('Puntero + click · calibra mirada antes');
 
   running = true;
   $('duck-start').disabled = false;
@@ -302,7 +383,7 @@ addEventListener('resize', () => {
 
 addEventListener('click', () => { if (running) shoot(); });
 addEventListener('keydown', (ev) => { if (running && ev.code === 'Space') shoot(); });
-addEventListener('pointermove', (ev) => { if (!gazeActive) updateAim(ev.clientX, ev.clientY); });
+addEventListener('pointermove', (ev) => { if (!gazeActive) updateAim(ev.clientX, ev.clientY, false); });
 
 document.addEventListener('DOMContentLoaded', () => {
   const userLabel = $('duck-user');

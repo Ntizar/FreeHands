@@ -33,10 +33,12 @@
   ];
   const SAMPLES_PER_POINT = 1;
   const HIT_RADIUS_PX = 75;
+  const GAZE_CALIBRATION_KEY = 'freehands:gazeCalibration:v1';
 
   let plan = [];
   let idx = 0;
   let errors = [];
+  let calibrationSamples = [];
   let webgazerReady = false;
   let cameraStream = null;
 
@@ -51,6 +53,27 @@
     if (ui.userName) ui.userName.value = user;
     if (ui.testDucks) ui.testDucks.href = `duck-hunt.html?user=${encodeURIComponent(user)}`;
     return user;
+  }
+
+  function saveGazeCalibration() {
+    if (calibrationSamples.length < 4) return;
+    const payload = {
+      user: getUserName(),
+      createdAt: new Date().toISOString(),
+      width: window.innerWidth,
+      height: window.innerHeight,
+      samples: calibrationSamples.slice(-40),
+    };
+    localStorage.setItem(GAZE_CALIBRATION_KEY, JSON.stringify(payload));
+  }
+
+  function recordGazeSample(pred, targetX, targetY) {
+    if (!pred || typeof pred.x !== 'number' || typeof pred.y !== 'number') return;
+    if (!Number.isFinite(pred.x) || !Number.isFinite(pred.y)) return;
+    calibrationSamples.push({ rawX: pred.x, rawY: pred.y, x: targetX, y: targetY });
+    saveGazeCalibration();
+    const ex = pred.x - targetX, ey = pred.y - targetY;
+    errors.push(Math.hypot(ex, ey));
   }
 
   // ── Diagnostics box ────────────────────────────────────────────────
@@ -154,8 +177,7 @@
         const got = window.webgazer.getCurrentPrediction();
         Promise.resolve(got).then((pred) => {
           if (pred && typeof pred.x === 'number') {
-            const ex = pred.x - tx, ey = pred.y - ty;
-            errors.push(Math.hypot(ex, ey));
+            recordGazeSample(pred, tx, ty);
           }
         }).catch(() => {});
       } catch (_) {}
@@ -174,6 +196,7 @@
       ui.result.classList.remove('hidden');
       ui.rPoints.textContent = String(idx);
       const user = saveUserName();
+      saveGazeCalibration();
       ui.testDucks.href = `duck-hunt.html?user=${encodeURIComponent(user)}`;
       if (errors.length) {
         const rms = Math.sqrt(errors.reduce((a, b) => a + b * b, 0) / errors.length);
@@ -213,7 +236,7 @@
         ui.cursor.style.left = `${data.x}px`;
         ui.cursor.style.top  = `${data.y}px`;
       })
-      .saveDataAcrossSessions(false)
+      .saveDataAcrossSessions(true)
       .begin()
       .then(() => {
         webgazerReady = true;
@@ -257,6 +280,7 @@
     plan = buildPlan();
     idx = 0;
     errors = [];
+    calibrationSamples = [];
     placeTarget();
   }
 

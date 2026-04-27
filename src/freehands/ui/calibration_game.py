@@ -80,7 +80,7 @@ class WelcomeScreen(QtWidgets.QWidget):
             body = (
                 "Vamos a recalibrar sólo tu mirada. No repetiremos gestos.\n"
                 "• Mira fijamente cada punto\n"
-                "• Confirma con clic o levantando sólo el índice\n"
+                "• Confirma con clic sobre el punto naranja\n"
                 "• Verás cámara, ojos, landmarks y confianza en directo\n"
                 "• Pulsa C si está usando la cámara equivocada\n"
                 "• Los 4 primeros puntos son las esquinas de la pantalla\n\n"
@@ -90,7 +90,7 @@ class WelcomeScreen(QtWidgets.QWidget):
         else:
             body = (
                 "Vamos a calibrar mirada y gestos.\n"
-                "• Primero: mira cada punto naranja y confirma con clic o índice\n"
+                "• Primero: mira cada punto naranja y confirma con clic\n"
                 "• Después: mantén cada gesto frente a la cámara\n\n"
                 "La mirada se guarda antes de empezar los gestos, así que no se pierde si algo falla."
             )
@@ -296,7 +296,7 @@ class AimTrainer(QtWidgets.QWidget):
         p.setBrush(QtGui.QColor(PALETTE.blue))
         p.drawRoundedRect(bx, 30, int(bar_w * progress), 10, 5, 5)
 
-        info = f"{self._current_idx}/{len(self._plan.points)}  ·  Mira el punto y confirma con click o índice arriba"
+        info = f"{self._current_idx}/{len(self._plan.points)}  ·  Mira el punto y confirma con click"
         p.setPen(QtGui.QColor(PALETTE.text_secondary))
         font = p.font()
         font.setPointSize(11)
@@ -806,11 +806,8 @@ class CalibrationWindow(QtWidgets.QMainWindow):
             )
             self.close()
             return
-        try:
-            self._hands = HandTracker()
-        except Exception:
-            self._hands = None
-        self.aim = AimTrainer(self._camera, self._tracker, self._hands, self._save_camera_index)
+        # Keep gaze calibration light: hand tracking runs in the separate gesture phase.
+        self.aim = AimTrainer(self._camera, self._tracker, None, self._save_camera_index)
         self.aim.finished.connect(self._after_aim)
         self._stack.addWidget(self.aim)
         self._stack.setCurrentWidget(self.aim)

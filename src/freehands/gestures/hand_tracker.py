@@ -70,6 +70,7 @@ class HandObservation:
 
 class HandTracker:
     def __init__(self) -> None:
+        self._swap_handedness = False
         self._backend = "solutions" if _mp_hands is not None else "tasks"
         if _mp_hands is not None:
             self._hands = _mp_hands.Hands(
@@ -93,6 +94,9 @@ class HandTracker:
             raise RuntimeError("MediaPipe Hands/GestureRecognizer is required" + detail)
         self._prev_pinch_dist: float | None = None
 
+    def set_handedness_swapped(self, enabled: bool) -> None:
+        self._swap_handedness = enabled
+
     def detect(self, frame_bgr: np.ndarray) -> HandObservation:
         import cv2
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -102,7 +106,7 @@ class HandTracker:
                 self._prev_pinch_dist = None
                 return HandObservation("none", 0.0, None, [])
             hands = [np.array([[p.x, p.y, p.z] for p in item.landmark]) for item in result.multi_hand_landmarks]
-            handedness = self._solution_handedness(result.multi_handedness)
+            handedness = self._normalize_handedness(self._solution_handedness(result.multi_handedness))
             gesture, conf = self._classify_multi(hands, handedness)
             return HandObservation(gesture, conf, hands[0], hands, handedness)
 
@@ -113,7 +117,7 @@ class HandTracker:
             return HandObservation("none", 0.0, None, [])
 
         hands = [np.array([[p.x, p.y, p.z] for p in item]) for item in result.hand_landmarks]
-        handedness = self._task_handedness(result.handedness)
+        handedness = self._normalize_handedness(self._task_handedness(result.handedness))
         gesture, conf = self._classify_multi(hands, handedness)
         if result.gestures and any(result.gestures):
             mapped = self._task_gesture(result.gestures, handedness)
@@ -188,6 +192,19 @@ class HandTracker:
         for item in items:
             labels.append(item[0].category_name if item else "")
         return labels
+
+    def _normalize_handedness(self, labels: list[str]) -> list[str]:
+        if not self._swap_handedness:
+            return labels
+        return [self._swap_label(label) for label in labels]
+
+    @staticmethod
+    def _swap_label(label: str) -> str:
+        if label == "Left":
+            return "Right"
+        if label == "Right":
+            return "Left"
+        return label
 
     # ── classification ────────────────────────────────────────────────────
     def _classify(self, pts: np.ndarray, handedness: str = "") -> tuple[GestureId, float]:

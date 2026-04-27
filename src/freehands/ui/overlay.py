@@ -120,6 +120,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
     activate_clicked = QtCore.pyqtSignal()
     pause_clicked = QtCore.pyqtSignal()
+    swap_handedness_clicked = QtCore.pyqtSignal()
     quit_clicked = QtCore.pyqtSignal()
 
     def __init__(self, user_id: str) -> None:
@@ -141,10 +142,12 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
         self._activate = QtWidgets.QPushButton("Activate")
         self._pause = QtWidgets.QPushButton("Pause")
+        self._swap_handedness = QtWidgets.QPushButton("Swap L/R: off")
         quit_btn = QtWidgets.QPushButton("Close")
 
         self._activate.clicked.connect(self.activate_clicked.emit)
         self._pause.clicked.connect(self.pause_clicked.emit)
+        self._swap_handedness.clicked.connect(self.swap_handedness_clicked.emit)
         quit_btn.clicked.connect(self.quit_clicked.emit)
 
         row = QtWidgets.QHBoxLayout()
@@ -152,9 +155,21 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         row.addWidget(self._pause)
         row.addWidget(quit_btn)
 
+        self._camera_preview = QtWidgets.QLabel("Camera preview")
+        self._camera_preview.setObjectName("fhCamera")
+        self._camera_preview.setFixedSize(332, 188)
+        self._camera_preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
         hint = QtWidgets.QLabel("Gesture: hold right open palm for 2s to toggle active/paused.")
         hint.setWordWrap(True)
         hint.setObjectName("fhHint")
+        self._last_action = QtWidgets.QLabel("Last action: -")
+        self._last_action.setObjectName("fhAction")
+        self._pause_progress = QtWidgets.QProgressBar()
+        self._pause_progress.setObjectName("fhPauseProgress")
+        self._pause_progress.setRange(0, 100)
+        self._pause_progress.setValue(0)
+        self._pause_progress.setFormat("Pause hold %p%")
         self._gaze = QtWidgets.QLabel("Gaze: waiting")
         self._gaze.setObjectName("fhRuntime")
         self._gaze.setWordWrap(True)
@@ -167,9 +182,13 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
         layout.addWidget(title)
         layout.addWidget(self._status)
+        layout.addWidget(self._camera_preview)
         layout.addLayout(row)
+        layout.addWidget(self._swap_handedness)
         layout.addWidget(self._gaze)
         layout.addWidget(self._gesture)
+        layout.addWidget(self._last_action)
+        layout.addWidget(self._pause_progress)
         layout.addWidget(self._bindings)
         layout.addWidget(hint)
 
@@ -182,9 +201,29 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             }}
             QLabel#fhTitle {{ font-size: 13px; font-weight: 700; color: {PALETTE.blue}; }}
             QLabel#fhStatus {{ font-size: 22px; font-weight: 800; padding: 4px 0; }}
+            QLabel#fhCamera {{
+                background: rgba(8, 18, 38, 0.08);
+                border: 1px solid rgba(30, 91, 255, 0.18);
+                border-radius: 8px;
+                color: {PALETTE.text_secondary};
+                font-size: 11px;
+                font-weight: 700;
+            }}
             QLabel#fhHint {{ color: {PALETTE.text_secondary}; font-size: 11px; }}
             QLabel#fhRuntime {{ color: {PALETTE.text_primary}; font-size: 11px; font-weight: 700; }}
+            QLabel#fhAction {{ color: {PALETTE.orange}; font-size: 12px; font-weight: 800; }}
             QLabel#fhBindings {{ color: {PALETTE.text_secondary}; font-size: 10px; line-height: 1.25; }}
+            QProgressBar {{
+                border: 1px solid rgba(30, 91, 255, 0.18);
+                border-radius: 6px;
+                height: 14px;
+                text-align: center;
+                color: {PALETTE.text_primary};
+                background: rgba(30, 91, 255, 0.06);
+                font-size: 9px;
+                font-weight: 700;
+            }}
+            QProgressBar::chunk {{ background: {PALETTE.orange}; border-radius: 5px; }}
             QPushButton {{
                 border: 1px solid rgba(30, 91, 255, 0.25);
                 border-radius: 8px;
@@ -210,6 +249,60 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
     def set_runtime_info(self, gaze: str, gesture: str) -> None:
         self._gaze.setText(gaze)
         self._gesture.setText(gesture)
+
+    def set_camera_preview(
+        self,
+        frame_bgr,
+        hands: list,
+        handedness: list[str],
+        gesture: str,
+    ) -> None:
+        if frame_bgr is None:
+            return
+        height, width = frame_bgr.shape[:2]
+        rgb = frame_bgr[:, :, ::-1].copy()
+        image = QtGui.QImage(
+            rgb.data,
+            width,
+            height,
+            width * 3,
+            QtGui.QImage.Format.Format_RGB888,
+        ).copy()
+        pixmap = QtGui.QPixmap.fromImage(image).scaled(
+            self._camera_preview.size(),
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        )
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        scale_x = pixmap.width()
+        scale_y = pixmap.height()
+        pen = QtGui.QPen(QtGui.QColor(PALETTE.orange), 2)
+        painter.setPen(pen)
+        painter.setBrush(QtGui.QColor(PALETTE.orange))
+        for index, hand in enumerate(hands):
+            for point in hand:
+                painter.drawEllipse(QtCore.QPointF(float(point[0]) * scale_x, float(point[1]) * scale_y), 2.2, 2.2)
+            label = handedness[index] if index < len(handedness) else "?"
+            wrist = hand[0]
+            painter.drawText(
+                int(float(wrist[0]) * scale_x) + 6,
+                int(float(wrist[1]) * scale_y) - 6,
+                label,
+            )
+        painter.setPen(QtGui.QColor(PALETTE.blue))
+        painter.drawText(8, 18, f"{gesture or 'none'} · mirrored")
+        painter.end()
+        self._camera_preview.setPixmap(pixmap)
+
+    def set_pause_progress(self, progress: float) -> None:
+        self._pause_progress.setValue(round(max(0.0, min(1.0, progress)) * 100))
+
+    def set_last_action(self, action: str) -> None:
+        self._last_action.setText(f"Last action: {action}")
+
+    def set_handedness_swapped(self, enabled: bool) -> None:
+        self._swap_handedness.setText("Swap L/R: on" if enabled else "Swap L/R: off")
 
     def set_bindings(self, bindings: dict[str, str]) -> None:
         labels = {

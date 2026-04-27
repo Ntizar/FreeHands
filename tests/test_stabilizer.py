@@ -61,6 +61,35 @@ def test_rearms_after_two_release_frames_for_fast_clicks():
     assert s.update("right_pointing_up", 0.9) == "right_pointing_up"
 
 
+def test_side_jitter_emits_generic_click_family_gesture():
+    s = GestureStabilizer(required_frames=2, confidence_min=0.5, rearm_frames=2)
+
+    s.update("right_pointing_up", 0.9)
+
+    assert s.update("left_pointing_up", 0.9) == "pointing_up"
+
+
+def test_open_palms_do_not_merge_left_and_right_for_safety():
+    s = GestureStabilizer(
+        required_frames=2,
+        confidence_min=0.5,
+        per_gesture={"right_open_palm": (3, 0.5), "left_open_palm": (2, 0.5)},
+    )
+
+    s.update("right_open_palm", 0.9)
+    assert s.update("left_open_palm", 0.9) is None
+
+
+def test_hold_progress_counts_exact_gesture_frames():
+    s = GestureStabilizer(required_frames=3, confidence_min=0.5)
+
+    s.update("right_open_palm", 0.9)
+    s.update("right_open_palm", 0.9)
+
+    assert s.hold_progress("right_open_palm", 4) == 0.5
+    assert s.hold_progress("left_open_palm", 4) == 0.0
+
+
 def test_single_noisy_frame_does_not_rearm_held_gesture():
     s = GestureStabilizer(required_frames=3, confidence_min=0.5)
     s.update("pointing_up", 0.9)

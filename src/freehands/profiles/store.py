@@ -40,6 +40,7 @@ class Profile(BaseModel):
     gesture_calibration_results: dict[str, dict[str, float | int | bool]] = Field(default_factory=dict)
     gaze_model: GazeModel = Field(default_factory=GazeModel)
     camera_index: int = CAMERA_INDEX
+    swap_handedness: bool = False
     pointer_control_enabled: bool = True
     dwell_time_ms: int = DEFAULT_DWELL_MS
     gesture_thresholds: dict[str, GestureThreshold] = Field(

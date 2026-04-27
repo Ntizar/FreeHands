@@ -71,7 +71,9 @@ Profiles are stored locally under `%LOCALAPPDATA%\Ntizar\FreeHands\profiles` on 
 
 ## Desktop Control
 
-When the local app is active, gaze moves the real Windows pointer at a throttled rate. If your gaze stays inside the same screen zone for about one second, FreeHands switches into fine aim and damps the pointer around that target to make precise clicks easier. Click gestures are direct and fast: raising the index finger emits a normal OS click without waiting for dwell or a long cooldown. Safety gestures stay slower.
+When the local app is active, gaze moves the real Windows pointer at a throttled rate. If your gaze stays inside the same screen zone for about one second, FreeHands switches into fine aim and damps the pointer around that target to make precise clicks easier. Click gestures are direct and fast: raising the index finger emits a normal OS click without waiting for dwell or a long cooldown. Side jitter is folded back to the generic click gesture, so a momentary left/right hand flip should not make clicks disappear. Safety gestures stay slower.
+
+The control panel stays in the top-right corner and shows the live mirrored camera preview, detected hand landmarks, detected hand side, last fired action and a pause-hold progress bar. If your camera reports left and right backwards, press `Swap L/R`; the setting is saved in your local profile.
 
 | Gesture | Default action |
 | --- | --- |
@@ -119,6 +121,7 @@ Good calibration matters more than any single model setting.
 | --- | --- |
 | Gaze pulls to corners | Re-run `FreeHands.bat gaze`; look at each point before confirming. |
 | Camera freezes or wrong camera opens | Use `FreeHands.bat camera` locally, or `Switch camera` in the browser. |
+| Left and right hand are reversed | Press `Swap L/R` in the top-right FreeHands panel and check the live camera preview. |
 | Eyes are not detected | Add frontal light, reduce backlight, clean the webcam frame, and keep your face centered. |
 | Gestures feel unreliable | Re-run `FreeHands.bat gestures` and hold each gesture until the ring completes. |
 | Clicks happen at the wrong place | Re-run gaze calibration and check the panel cursor readout before confirming actions. |

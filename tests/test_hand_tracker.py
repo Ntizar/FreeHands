@@ -41,6 +41,13 @@ def test_task_gesture_uses_best_hand_candidate() -> None:
     assert confidence == 0.92
 
 
+def test_handedness_swap_can_correct_camera_left_right_confusion() -> None:
+    tracker = HandTracker.__new__(HandTracker)
+    tracker._swap_handedness = True
+
+    assert tracker._normalize_handedness(["Left", "Right", ""]) == ["Right", "Left", ""]
+
+
 def test_rule_based_open_palm_maps_to_pause_gesture() -> None:
     tracker = HandTracker.__new__(HandTracker)
     tracker._prev_pinch_dist = None

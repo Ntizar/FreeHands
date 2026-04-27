@@ -23,7 +23,7 @@ from .config import (
 from .fusion import MultimodalFusion, State
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gestures import GestureStabilizer, HandTracker
-from .profiles import load_profile
+from .profiles import load_profile, save_profile
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .voice import VoiceListener
 
@@ -148,6 +148,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         camera = Camera().start()
     gaze_tracker = GazeTracker()
     hand_tracker = HandTracker()
+    hand_tracker.set_handedness_swapped(profile.swap_handedness)
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))
     gesture_thresholds = {
         gesture: (threshold.stability_frames, threshold.confidence_min)
@@ -172,6 +173,13 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     panel = FreeHandsControlPanel(user_id)
 
+    def toggle_handedness_swap() -> None:
+        profile.swap_handedness = not profile.swap_handedness
+        hand_tracker.set_handedness_swapped(profile.swap_handedness)
+        save_profile(profile)
+        panel.set_handedness_swapped(profile.swap_handedness)
+        overlay.flash_action("swap L/R on" if profile.swap_handedness else "swap L/R off")
+
     def activate_system() -> None:
         fusion.sm.activate()
         overlay.flash_action("FreeHands active")
@@ -184,9 +192,11 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     panel.activate_clicked.connect(activate_system)
     panel.pause_clicked.connect(pause_system)
+    panel.swap_handedness_clicked.connect(toggle_handedness_swap)
     panel.quit_clicked.connect(app.quit)
     panel.set_state(fusion.sm.state)
     panel.set_bindings(profile.gesture_bindings)
+    panel.set_handedness_swapped(profile.swap_handedness)
     panel.show()
 
     if voice_enabled and profile.voice_enabled:
@@ -235,6 +245,10 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         hand_obs = hand_tracker.detect(frame.image)
         confirmed = stabilizer.update(hand_obs.gesture, hand_obs.confidence)
         action = profile.gesture_bindings.get(confirmed, "") if confirmed else ""
+        pause_required = profile.gesture_thresholds.get("right_open_palm")
+        pause_progress = 0.0
+        if hand_obs.gesture == "right_open_palm" and pause_required is not None:
+            pause_progress = min(1.0, stabilizer.hold_progress("right_open_palm", pause_required.stability_frames))
         debug = gaze_tracker.last_debug
         gaze_source = "pupil" if debug.pupil_detected else "iris" if debug.iris_detected else "no eyes"
         fine_aim_text = " fine" if fine_aim.active else ""
@@ -244,6 +258,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             f"Gaze: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}",
             f"Hand: {hand_obs.gesture}{hand_side} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
         )
+        panel.set_camera_preview(frame.image, hand_obs.hands, hand_obs.handedness, hand_obs.gesture)
+        panel.set_pause_progress(pause_progress)
 
         # Fusion
         result = fusion.step(cursor, confirmed)
@@ -269,6 +285,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
         if result.fired_action:
             overlay.flash_action(result.fired_action)
+            panel.set_last_action(result.fired_action)
             if result.fired_action not in {"toggle_pause", "resume"}:
                 dispatcher.execute(result.fired_action, at_xy=result.cursor_xy)
 

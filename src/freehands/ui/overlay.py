@@ -8,8 +8,6 @@ from .theme import PALETTE
 
 
 GESTURE_LABELS = {
-    "thumb_up": "👍 Thumb up",
-    "thumb_down": "👎 Thumb down",
     "pointing_up": "☝️ Index",
     "middle_up": "🖕 Middle",
     "two_fingers_up": "✌️ Index+middle",
@@ -19,12 +17,14 @@ GESTURE_LABELS = {
     "right_middle_up": "👉🖕 Right middle",
     "left_two_fingers_up": "👈✌️ Left index+middle",
     "right_two_fingers_up": "👉✌️ Right index+middle",
+    "right_open_palm": "👉🖐 Right palm",
+    "left_open_palm": "👈🖐 Left palm",
     "two_hands_together": "🤲 Hands together",
     "two_hands_apart": "🙌 Hands apart",
+    "thumb_down": "👎 Thumb down",
+    "thumb_up": "👍 Thumb up",
     "pinch_open": "🤏↔ Pinch open",
     "pinch_close": "🤏 Pinch close",
-    "left_open_palm": "👈🖐 Left palm",
-    "right_open_palm": "👉🖐 Right palm",
     "fist_pause": "✊ Closed fist",
 }
 
@@ -171,21 +171,23 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         self._binding_combos: dict[str, QtWidgets.QComboBox] = {}
         self._updating_bindings = False
         self._editing_bindings = False
+        self._deduping_bindings = False
         self._saved_bindings: dict[str, str] = {}
         self._minimized = False
+        self._user_id = user_id
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        title = QtWidgets.QLabel(f"FreeHands · {user_id}")
-        title.setObjectName("fhTitle")
+        self._title = QtWidgets.QLabel(f"FreeHands · {user_id}")
+        self._title.setObjectName("fhTitle")
         self._minimize = QtWidgets.QPushButton("−")
         self._minimize.setObjectName("fhMiniButton")
         self._minimize.setFixedSize(30, 28)
         self._minimize.clicked.connect(self._toggle_minimized)
         header = QtWidgets.QHBoxLayout()
-        header.addWidget(title)
+        header.addWidget(self._title)
         header.addStretch(1)
         header.addWidget(self._minimize)
         self._status = QtWidgets.QLabel("PAUSED")
@@ -292,6 +294,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             self._gesture,
             self._last_action,
             self._pause_progress,
+            self._status,
             self._binding_controls,
             self._bindings_scroll,
             hint,
@@ -358,14 +361,26 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             QPushButton#fhMiniButton {{ padding: 0; font-size: 18px; }}
         """)
 
-        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        self.move(screen.right() - self.width() - 24, screen.top() + 72)
+        self._place_window()
 
     def _emit_binding_changed(self, gesture: str) -> None:
-        if self._updating_bindings:
+        if self._updating_bindings or self._deduping_bindings:
             return
         if self._editing_bindings:
+            combo = self._binding_combos[gesture]
+            action = combo.currentData() or ""
+            if action:
+                self._clear_duplicate_action(gesture, action)
             self._save_bindings.setEnabled(True)
+
+    def _clear_duplicate_action(self, source_gesture: str, action: str) -> None:
+        self._deduping_bindings = True
+        try:
+            for gesture, combo in self._binding_combos.items():
+                if gesture != source_gesture and combo.currentData() == action:
+                    combo.setCurrentIndex(0)
+        finally:
+            self._deduping_bindings = False
 
     def _set_binding_edit_mode(self, enabled: bool) -> None:
         self._editing_bindings = enabled
@@ -396,12 +411,29 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         for widget in self._detail_widgets:
             widget.setVisible(not self._minimized)
         self._minimize.setText("+" if self._minimized else "−")
-        self.setFixedWidth(260 if self._minimized else 420)
+        if self._minimized:
+            self._title.setText(f"FreeHands · {self._status.text()}")
+            self.setFixedSize(260, 58)
+        else:
+            self._title.setText(f"FreeHands · {self._user_id}")
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(16777215)
+            self.setFixedWidth(420)
         self.adjustSize()
+        self._place_window()
+
+    def _place_window(self) -> None:
+        screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        if self._minimized:
+            self.move(screen.right() - self.width() - 24, screen.bottom() - self.height() - 24)
+        else:
+            self.move(screen.right() - self.width() - 24, screen.top() + 72)
 
     def set_state(self, state: State) -> None:
         active = state != State.IDLE
         self._status.setText("ACTIVE" if active else "PAUSED")
+        if self._minimized:
+            self._title.setText(f"FreeHands · {self._status.text()}")
         self._status.setStyleSheet(
             f"color: {PALETTE.blue};" if active else f"color: {PALETTE.text_muted};"
         )

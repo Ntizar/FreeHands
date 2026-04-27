@@ -61,6 +61,16 @@ def test_rearms_after_two_release_frames_for_fast_clicks():
     assert s.update("right_pointing_up", 0.9) == "right_pointing_up"
 
 
+def test_fist_to_index_transition_emits_click_gesture() -> None:
+    s = GestureStabilizer(required_frames=1, confidence_min=0.5, rearm_frames=1)
+
+    assert s.update("fist_pause", 0.9) == "fist_pause"
+    assert s.update("right_pointing_up", 0.9) == "right_pointing_up"
+
+    s.update("none", 0.0)
+    assert s.update("right_pointing_up", 0.9) == "right_pointing_up"
+
+
 def test_side_jitter_emits_generic_click_family_gesture():
     s = GestureStabilizer(required_frames=2, confidence_min=0.5, rearm_frames=2)
 

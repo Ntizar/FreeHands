@@ -12,6 +12,24 @@ from .state_machine import State, StateMachine
 
 
 DIRECT_POINTER_ACTIONS = {"click", "right_click", "double_click", "undo"}
+SIDE_BINDING_FALLBACKS = {
+    "left_pointing_up": "pointing_up",
+    "right_pointing_up": "pointing_up",
+    "left_middle_up": "middle_up",
+    "right_middle_up": "middle_up",
+    "left_two_fingers_up": "two_fingers_up",
+    "right_two_fingers_up": "two_fingers_up",
+}
+
+
+def action_for_gesture(bindings: dict[str, str], gesture: str | None) -> str | None:
+    if not gesture:
+        return None
+    action = bindings.get(gesture)
+    if action:
+        return action
+    fallback = SIDE_BINDING_FALLBACKS.get(gesture)
+    return bindings.get(fallback) if fallback else action
 
 
 @dataclass
@@ -56,7 +74,7 @@ class MultimodalFusion:
         confirmed_gesture: str | None,
     ) -> FusionResult:
         bindings = self.profile.gesture_bindings
-        candidate_action = bindings.get(confirmed_gesture or "")
+        candidate_action = action_for_gesture(bindings, confirmed_gesture)
 
         # Any gesture explicitly mapped to toggle_pause is honoured in any state.
         if confirmed_gesture and candidate_action == "toggle_pause":

@@ -1,4 +1,4 @@
-from freehands.fusion import MultimodalFusion, State
+from freehands.fusion import MultimodalFusion, State, action_for_gesture
 from freehands.profiles import Profile
 
 
@@ -8,9 +8,22 @@ def test_default_profile_uses_right_open_palm_for_pause() -> None:
     assert profile.gesture_bindings["right_open_palm"] == "toggle_pause"
     assert profile.gesture_bindings["left_open_palm"] == "undo"
     assert profile.gesture_bindings["fist_pause"] == ""
+    assert profile.gesture_bindings["left_pointing_up"] == ""
+    assert profile.gesture_bindings["right_pointing_up"] == ""
     assert profile.gesture_thresholds["two_fingers_up"].stability_frames == 1
     assert profile.gesture_thresholds["left_open_palm"].stability_frames == 10
     assert profile.gesture_thresholds["right_open_palm"].stability_frames == 60
+
+    actions = [action for action in profile.gesture_bindings.values() if action]
+    assert len(actions) == len(set(actions))
+
+
+def test_side_gestures_fallback_to_generic_bindings() -> None:
+    profile = Profile(user_id="test")
+
+    assert action_for_gesture(profile.gesture_bindings, "left_pointing_up") == "click"
+    assert action_for_gesture(profile.gesture_bindings, "right_pointing_up") == "click"
+    assert action_for_gesture(profile.gesture_bindings, "left_two_fingers_up") == "double_click"
 
 
 def test_pointer_click_fires_without_dwell_when_pointer_control_is_enabled() -> None:

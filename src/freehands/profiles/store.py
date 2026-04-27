@@ -17,6 +17,28 @@ from ..config import (
 )
 
 
+GESTURE_BINDING_PRIORITY = [
+    "pointing_up",
+    "middle_up",
+    "two_fingers_up",
+    "right_open_palm",
+    "left_open_palm",
+    "two_hands_together",
+    "two_hands_apart",
+    "thumb_down",
+    "left_pointing_up",
+    "right_pointing_up",
+    "left_middle_up",
+    "right_middle_up",
+    "left_two_fingers_up",
+    "right_two_fingers_up",
+    "thumb_up",
+    "pinch_open",
+    "pinch_close",
+    "fist_pause",
+]
+
+
 class GestureThreshold(BaseModel):
     confidence_min: float = DEFAULT_GESTURE_CONFIDENCE
     stability_frames: int = DEFAULT_STABILITY_FRAMES
@@ -67,22 +89,22 @@ class Profile(BaseModel):
     )
     gesture_bindings: dict[str, str] = Field(
         default_factory=lambda: {
-            "thumb_up":    "click",
+            "thumb_up":    "",
             "thumb_down":  "escape",
             "pointing_up": "click",
             "middle_up":   "right_click",
             "two_fingers_up": "double_click",
-            "left_pointing_up": "click",
-            "right_pointing_up": "click",
-            "left_middle_up": "right_click",
-            "right_middle_up": "right_click",
-            "left_two_fingers_up": "double_click",
-            "right_two_fingers_up": "double_click",
+            "left_pointing_up": "",
+            "right_pointing_up": "",
+            "left_middle_up": "",
+            "right_middle_up": "",
+            "left_two_fingers_up": "",
+            "right_two_fingers_up": "",
             "two_hands_together": "zoom_in",
             "two_hands_apart": "zoom_out",
-            "pinch_open":  "zoom_in",
-            "pinch_close": "zoom_out",
-            "tongue_out":  "right_click",
+            "pinch_open":  "",
+            "pinch_close": "",
+            "tongue_out":  "",
             "left_open_palm": "undo",
             "right_open_palm": "toggle_pause",
             "fist_pause":  "",
@@ -123,6 +145,19 @@ def _migrate_threshold_if_default(
         profile.gesture_thresholds[gesture] = new_threshold
 
 
+def _dedupe_bindings(bindings: dict[str, str]) -> None:
+    seen_actions: set[str] = set()
+    ordered_gestures = [*GESTURE_BINDING_PRIORITY, *[gesture for gesture in bindings if gesture not in GESTURE_BINDING_PRIORITY]]
+    for gesture in ordered_gestures:
+        action = bindings.get(gesture, "")
+        if not action:
+            continue
+        if action in seen_actions:
+            bindings[gesture] = ""
+        else:
+            seen_actions.add(action)
+
+
 def load_profile(user_id: str) -> Profile:
     path = profile_path(user_id)
     if not path.exists():
@@ -161,17 +196,21 @@ def load_profile(user_id: str) -> Profile:
     for gesture, action in defaults.gesture_bindings.items():
         profile.gesture_bindings.setdefault(gesture, action)
     for gesture, action in {
-        "left_pointing_up": "click",
-        "right_pointing_up": "click",
-        "left_middle_up": "right_click",
-        "right_middle_up": "right_click",
-        "left_two_fingers_up": "double_click",
-        "right_two_fingers_up": "double_click",
+        "left_pointing_up": "",
+        "right_pointing_up": "",
+        "left_middle_up": "",
+        "right_middle_up": "",
+        "left_two_fingers_up": "",
+        "right_two_fingers_up": "",
         "left_open_palm": "undo",
     }.items():
-        profile.gesture_bindings.setdefault(gesture, action)
+        if profile.gesture_bindings.get(gesture) in {"click", "right_click", "double_click"}:
+            profile.gesture_bindings[gesture] = ""
+        else:
+            profile.gesture_bindings.setdefault(gesture, action)
     profile.gesture_bindings.setdefault("right_open_palm", "toggle_pause")
     profile.gesture_bindings["fist_pause"] = ""
+    _dedupe_bindings(profile.gesture_bindings)
     return profile
 
 

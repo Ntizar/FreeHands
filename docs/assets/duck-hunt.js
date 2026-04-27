@@ -4,8 +4,11 @@ const $ = (id) => document.getElementById(id);
 
 const TOTAL_DUCKS = 30;
 const PASS_SCORE = 22;
-const HIT_RADIUS = 132;
-const SHOT_COOLDOWN_MS = 520;
+const HIT_RADIUS = 148;
+const SHOT_COOLDOWN_MS = 120;
+const AIM_ASSIST_HOLD_MS = 520;
+const AIM_ASSIST_RADIUS = 190;
+const AIM_ASSIST_STABLE_RADIUS = 64;
 
 let renderer;
 let scene;
@@ -15,6 +18,7 @@ let spawned = 0;
 let score = 0;
 let running = false;
 let aim = { x: innerWidth / 2, y: innerHeight / 2 };
+let aimAnchor = { x: innerWidth / 2, y: innerHeight / 2, since: 0 };
 let lastShotAt = 0;
 let audioCtx = null;
 
@@ -67,11 +71,34 @@ function clamp(value, min, max) {
 }
 
 function updateAim(x, y) {
-  aim.x = clamp(Number.isFinite(x) ? x : aim.x, 0, innerWidth - 1);
-  aim.y = clamp(Number.isFinite(y) ? y : aim.y, 0, innerHeight - 1);
+  const rawX = clamp(Number.isFinite(x) ? x : aim.x, 0, innerWidth - 1);
+  const rawY = clamp(Number.isFinite(y) ? y : aim.y, 0, innerHeight - 1);
+  const now = performance.now();
+  if (Math.hypot(rawX - aimAnchor.x, rawY - aimAnchor.y) > AIM_ASSIST_STABLE_RADIUS) {
+    aimAnchor = { x: rawX, y: rawY, since: now };
+  }
+  const assisted = now - aimAnchor.since >= AIM_ASSIST_HOLD_MS ? assistedAim(rawX, rawY) : null;
+  aim.x = assisted?.x ?? rawX;
+  aim.y = assisted?.y ?? rawY;
   const crosshair = $('duck-crosshair');
+  crosshair.classList.toggle('snap', !!assisted);
   crosshair.style.left = `${aim.x}px`;
   crosshair.style.top = `${aim.y}px`;
+}
+
+function assistedAim(x, y) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const duck of ducks) {
+    const screenX = duck.position.x + innerWidth / 2;
+    const screenY = innerHeight / 2 - duck.position.y;
+    const distance = Math.hypot(screenX - x, screenY - y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = { x: screenX, y: screenY };
+    }
+  }
+  return best && bestDistance <= AIM_ASSIST_RADIUS ? best : null;
 }
 
 function setupThree() {
@@ -233,6 +260,13 @@ addEventListener('click', (event) => {
   if (!running) return;
   const target = event.target;
   if (target instanceof Element && target.closest('button,a,.duck-help,.duck-hud,.duck-result,.nav')) return;
+  shoot();
+});
+addEventListener('pointerdown', (event) => {
+  if (!running || event.button !== 0) return;
+  const target = event.target;
+  if (target instanceof Element && target.closest('button,a,.duck-help,.duck-hud,.duck-result,.nav')) return;
+  updateAim(event.clientX, event.clientY);
   shoot();
 });
 addEventListener('keydown', (event) => { if (running && event.code === 'Space') shoot(); });

@@ -314,6 +314,7 @@ footer {
 .duck-hud strong{min-width:62px;color:var(--blue)}
 .duck-hud span{font-size:13px;color:var(--text-2);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .duck-crosshair{position:fixed;left:50%;top:50%;width:42px;height:42px;border-radius:50%;border:3px solid var(--blue);box-shadow:0 0 0 12px rgba(30,91,255,.14);transform:translate(-50%,-50%);z-index:21;pointer-events:none}
+.duck-crosshair.snap{border-color:var(--orange);box-shadow:0 0 0 16px rgba(255,122,26,.2),0 0 28px rgba(255,122,26,.38)}
 .duck-crosshair::before,.duck-crosshair::after{content:"";position:absolute;background:var(--orange);left:50%;top:50%;transform:translate(-50%,-50%)}
 .duck-crosshair::before{width:22px;height:3px}.duck-crosshair::after{width:3px;height:22px}
 .duck-result{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:25;max-width:520px;text-align:center}

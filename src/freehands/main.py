@@ -182,11 +182,11 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         panel.set_handedness_swapped(profile.swap_handedness)
         overlay.flash_action("swap L/R on" if profile.swap_handedness else "swap L/R off")
 
-    def update_gesture_binding(gesture: str, action: str) -> None:
-        profile.gesture_bindings[gesture] = action
+    def update_gesture_bindings(bindings: dict[str, str]) -> None:
+        profile.gesture_bindings.update(bindings)
         save_profile(profile)
-        overlay.flash_action(f"{gesture}: {action or 'off'}")
-        panel.set_last_action(f"mapping {gesture} -> {action or 'off'}")
+        overlay.flash_action("gesture actions saved")
+        panel.set_last_action("gesture actions saved")
 
     def activate_system() -> None:
         fusion.sm.activate()
@@ -201,7 +201,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     panel.activate_clicked.connect(activate_system)
     panel.pause_clicked.connect(pause_system)
     panel.swap_handedness_clicked.connect(toggle_handedness_swap)
-    panel.binding_changed.connect(update_gesture_binding)
+    panel.bindings_saved.connect(update_gesture_bindings)
     panel.quit_clicked.connect(app.quit)
     panel.set_state(fusion.sm.state)
     panel.set_bindings(profile.gesture_bindings)

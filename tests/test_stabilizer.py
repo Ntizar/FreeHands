@@ -50,6 +50,17 @@ def test_rearms_same_gesture_after_release():
     assert s.update("pointing_up", 0.9) == "pointing_up"
 
 
+def test_rearms_after_two_release_frames_for_fast_clicks():
+    s = GestureStabilizer(required_frames=2, confidence_min=0.5, rearm_frames=2)
+    s.update("right_pointing_up", 0.9)
+    assert s.update("right_pointing_up", 0.9) == "right_pointing_up"
+
+    s.update("none", 0.0)
+    s.update("none", 0.0)
+    s.update("right_pointing_up", 0.9)
+    assert s.update("right_pointing_up", 0.9) == "right_pointing_up"
+
+
 def test_single_noisy_frame_does_not_rearm_held_gesture():
     s = GestureStabilizer(required_frames=3, confidence_min=0.5)
     s.update("pointing_up", 0.9)

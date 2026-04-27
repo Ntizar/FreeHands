@@ -239,9 +239,10 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         gaze_source = "pupil" if debug.pupil_detected else "iris" if debug.iris_detected else "no eyes"
         fine_aim_text = " fine" if fine_aim.active else ""
         cursor_text = f"{cursor[0]},{cursor[1]}{fine_aim_text}" if cursor else "-"
+        hand_side = f" side={','.join(hand_obs.handedness)}" if hand_obs.handedness else ""
         panel.set_runtime_info(
             f"Gaze: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}",
-            f"Hand: {hand_obs.gesture} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
+            f"Hand: {hand_obs.gesture}{hand_side} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
         )
 
         # Fusion

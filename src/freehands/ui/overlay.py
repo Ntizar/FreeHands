@@ -152,7 +152,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         row.addWidget(self._pause)
         row.addWidget(quit_btn)
 
-        hint = QtWidgets.QLabel("Gesture: right open palm toggles active/paused.")
+        hint = QtWidgets.QLabel("Gesture: hold right open palm for 2s to toggle active/paused.")
         hint.setWordWrap(True)
         hint.setObjectName("fhHint")
         self._gaze = QtWidgets.QLabel("Gaze: waiting")
@@ -213,11 +213,15 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
 
     def set_bindings(self, bindings: dict[str, str]) -> None:
         labels = {
-            "pointing_up": "Index",
-            "middle_up": "Middle",
-            "two_fingers_up": "Index+middle",
+            "left_pointing_up": "Left index",
+            "right_pointing_up": "Right index",
+            "left_middle_up": "Left middle",
+            "right_middle_up": "Right middle",
+            "left_two_fingers_up": "Left index+middle",
+            "right_two_fingers_up": "Right index+middle",
             "two_hands_together": "Hands together",
             "two_hands_apart": "Hands apart",
+            "left_open_palm": "Left palm",
             "right_open_palm": "Right palm",
         }
         action_labels = {
@@ -226,6 +230,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             "double_click": "double click",
             "zoom_in": "zoom +",
             "zoom_out": "zoom -",
+            "undo": "undo",
             "toggle_pause": "active/pause",
         }
         rows = []

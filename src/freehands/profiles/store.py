@@ -46,14 +46,21 @@ class Profile(BaseModel):
         default_factory=lambda: {
             "thumb_up":    GestureThreshold(),
             "thumb_down":  GestureThreshold(),
-            "pointing_up": GestureThreshold(stability_frames=5, confidence_min=0.75),
-            "middle_up":   GestureThreshold(stability_frames=5, confidence_min=0.75),
-            "two_fingers_up": GestureThreshold(stability_frames=3, confidence_min=0.70),
+            "pointing_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "middle_up":   GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "two_fingers_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "left_pointing_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "right_pointing_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "left_middle_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "right_middle_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "left_two_fingers_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
+            "right_two_fingers_up": GestureThreshold(stability_frames=2, confidence_min=0.60),
             "two_hands_together": GestureThreshold(stability_frames=6, confidence_min=0.80),
             "two_hands_apart": GestureThreshold(stability_frames=6, confidence_min=0.80),
             "pinch_open":  GestureThreshold(stability_frames=5, confidence_min=0.90),
             "pinch_close": GestureThreshold(stability_frames=5, confidence_min=0.90),
-            "right_open_palm": GestureThreshold(stability_frames=12, confidence_min=0.80),
+            "left_open_palm": GestureThreshold(stability_frames=10, confidence_min=0.80),
+            "right_open_palm": GestureThreshold(stability_frames=60, confidence_min=0.80),
             "fist_pause":  GestureThreshold(stability_frames=15),
         }
     )
@@ -64,11 +71,18 @@ class Profile(BaseModel):
             "pointing_up": "click",
             "middle_up":   "right_click",
             "two_fingers_up": "double_click",
+            "left_pointing_up": "click",
+            "right_pointing_up": "click",
+            "left_middle_up": "right_click",
+            "right_middle_up": "right_click",
+            "left_two_fingers_up": "double_click",
+            "right_two_fingers_up": "double_click",
             "two_hands_together": "zoom_in",
             "two_hands_apart": "zoom_out",
             "pinch_open":  "zoom_in",
             "pinch_close": "zoom_out",
             "tongue_out":  "right_click",
+            "left_open_palm": "undo",
             "right_open_palm": "toggle_pause",
             "fist_pause":  "",
         }
@@ -93,6 +107,21 @@ def save_profile(profile: Profile) -> Path:
     return path
 
 
+def _threshold_matches(threshold: GestureThreshold, frames: int, confidence: float) -> bool:
+    return threshold.stability_frames == frames and abs(threshold.confidence_min - confidence) < 0.001
+
+
+def _migrate_threshold_if_default(
+    profile: Profile,
+    gesture: str,
+    new_threshold: GestureThreshold,
+    old_defaults: tuple[tuple[int, float], ...],
+) -> None:
+    current = profile.gesture_thresholds.get(gesture)
+    if current is None or any(_threshold_matches(current, frames, confidence) for frames, confidence in old_defaults):
+        profile.gesture_thresholds[gesture] = new_threshold
+
+
 def load_profile(user_id: str) -> Profile:
     path = profile_path(user_id)
     if not path.exists():
@@ -104,11 +133,43 @@ def load_profile(user_id: str) -> Profile:
     defaults = Profile(user_id=user_id)
     for gesture, threshold in defaults.gesture_thresholds.items():
         profile.gesture_thresholds.setdefault(gesture, threshold)
-    profile.gesture_thresholds["two_fingers_up"] = GestureThreshold(stability_frames=3, confidence_min=0.70)
-    profile.gesture_thresholds["right_open_palm"] = GestureThreshold(stability_frames=12, confidence_min=0.80)
+    for gesture in (
+        "pointing_up", "middle_up", "two_fingers_up",
+        "left_pointing_up", "right_pointing_up",
+        "left_middle_up", "right_middle_up",
+        "left_two_fingers_up", "right_two_fingers_up",
+    ):
+        _migrate_threshold_if_default(
+            profile,
+            gesture,
+            GestureThreshold(stability_frames=2, confidence_min=0.60),
+            ((8, 0.85), (5, 0.75), (3, 0.70), (2, 0.60)),
+        )
+    _migrate_threshold_if_default(
+        profile,
+        "left_open_palm",
+        GestureThreshold(stability_frames=10, confidence_min=0.80),
+        ((8, 0.85), (10, 0.80)),
+    )
+    _migrate_threshold_if_default(
+        profile,
+        "right_open_palm",
+        GestureThreshold(stability_frames=60, confidence_min=0.80),
+        ((8, 0.85), (12, 0.80), (60, 0.80)),
+    )
     for gesture, action in defaults.gesture_bindings.items():
         profile.gesture_bindings.setdefault(gesture, action)
-    profile.gesture_bindings["right_open_palm"] = "toggle_pause"
+    for gesture, action in {
+        "left_pointing_up": "click",
+        "right_pointing_up": "click",
+        "left_middle_up": "right_click",
+        "right_middle_up": "right_click",
+        "left_two_fingers_up": "double_click",
+        "right_two_fingers_up": "double_click",
+        "left_open_palm": "undo",
+    }.items():
+        profile.gesture_bindings.setdefault(gesture, action)
+    profile.gesture_bindings.setdefault("right_open_palm", "toggle_pause")
     profile.gesture_bindings["fist_pause"] = ""
     return profile
 

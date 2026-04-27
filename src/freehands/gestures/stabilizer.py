@@ -20,6 +20,7 @@ class GestureStabilizer:
         required_frames: int = 8,
         confidence_min: float = 0.85,
         per_gesture: dict[str, tuple[int, float]] | None = None,
+        rearm_frames: int = 2,
     ) -> None:
         self._per_gesture = per_gesture or {}
         max_frames = max([required_frames, *[frames for frames, _ in self._per_gesture.values()]])
@@ -27,8 +28,20 @@ class GestureStabilizer:
         self._required = required_frames
         self._threshold = confidence_min
         self._last_emitted: str | None = None
+        self._rearm_frames = rearm_frames
+        self._release_frames = 0
 
     def update(self, gesture: str, confidence: float) -> str | None:
+        if self._last_emitted is not None:
+            if gesture == self._last_emitted:
+                self._release_frames = 0
+            else:
+                self._release_frames += 1
+                if self._release_frames >= self._rearm_frames:
+                    self._last_emitted = None
+                    self._release_frames = 0
+                    self._buf.clear()
+
         self._buf.append((gesture, confidence))
         first = self._buf[-1][0]
         required, threshold = self._per_gesture.get(first, (self._required, self._threshold))
@@ -36,8 +49,6 @@ class GestureStabilizer:
             return None
 
         recent = list(self._buf)[-required:]
-        if self._last_emitted is not None and all(g != self._last_emitted for g, _ in recent):
-            self._last_emitted = None
         first = recent[0][0]
         if first == "none" or any(g != first for g, _ in recent):
             return None
@@ -54,3 +65,4 @@ class GestureStabilizer:
     def reset(self) -> None:
         self._buf.clear()
         self._last_emitted = None
+        self._release_frames = 0

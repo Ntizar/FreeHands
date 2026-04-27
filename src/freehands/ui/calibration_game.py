@@ -467,13 +467,20 @@ GESTURE_BASE_ROUND: list[tuple[str, str, str]] = [
     ("two_fingers_up", "Index + middle", "Raise index and middle together: this confirms double click."),
     ("two_hands_together", "Hands together", "Show both hands close together: zoom in."),
     ("two_hands_apart", "Hands apart", "Show both hands apart: zoom out."),
-    ("right_open_palm", "Right open palm", "Open your right hand fully: activates or pauses FreeHands."),
+    ("right_open_palm", "Right open palm", "Open your right hand fully for about two seconds: activates or pauses FreeHands."),
 ]
 GESTURE_ROUND = GESTURE_BASE_ROUND + GESTURE_BASE_ROUND
 HOLD_FRAMES = 12          # ~0.4 s @ 30 fps
 HOLD_CONFIDENCE = 0.65    # minimum sustained confidence
 TIMEOUT_MS = 9000         # per gesture
 TICK_MS = 33              # ~30 fps
+
+GESTURE_ALIASES = {
+    "pointing_up": {"pointing_up", "left_pointing_up", "right_pointing_up"},
+    "middle_up": {"middle_up", "left_middle_up", "right_middle_up"},
+    "two_fingers_up": {"two_fingers_up", "left_two_fingers_up", "right_two_fingers_up"},
+    "right_open_palm": {"right_open_palm", "left_open_palm", "open_palm"},
+}
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -599,7 +606,7 @@ class GestureTrainer(QtWidgets.QWidget):
         self._last_obs_label = obs.gesture
         self._last_confidence = obs.confidence
 
-        if obs.gesture == target_id and obs.confidence >= HOLD_CONFIDENCE:
+        if obs.gesture in GESTURE_ALIASES.get(target_id, {target_id}) and obs.confidence >= HOLD_CONFIDENCE:
             self._held += 1
             self._frames += 1
             self._confs.append(obs.confidence)

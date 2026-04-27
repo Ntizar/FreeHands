@@ -8,7 +8,7 @@ pyautogui.PAUSE = 0
 
 ACTIONS = {"click", "right_click", "double_click", "escape",
            "zoom_in", "zoom_out", "scroll_up", "scroll_down",
-           "toggle_pause", "resume"}
+           "undo", "toggle_pause", "resume"}
 
 
 class ActionDispatcher:
@@ -48,5 +48,7 @@ class ActionDispatcher:
             pyautogui.scroll(3)
         elif action == "scroll_down":
             pyautogui.scroll(-3)
+        elif action == "undo":
+            pyautogui.hotkey("ctrl", "z")
         # toggle_pause / resume are handled by the UI overlay, not pyautogui.
         return True

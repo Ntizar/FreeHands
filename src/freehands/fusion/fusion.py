@@ -11,7 +11,7 @@ from ..profiles import Profile
 from .state_machine import State, StateMachine
 
 
-DIRECT_POINTER_ACTIONS = {"click", "right_click", "double_click"}
+DIRECT_POINTER_ACTIONS = {"click", "right_click", "double_click", "undo"}
 PAUSE_GESTURE = "right_open_palm"
 
 
@@ -94,7 +94,6 @@ class MultimodalFusion:
                 and self.sm.state in {State.ACTIVE, State.CONFIRMING}
             ):
                 self._last_action_at = now
-                self.sm.trigger_cooldown()
                 return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action)
 
             if self.sm.state == State.CONFIRMING:

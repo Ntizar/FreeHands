@@ -6,8 +6,11 @@ def test_default_profile_uses_right_open_palm_for_pause() -> None:
     profile = Profile(user_id="test")
 
     assert profile.gesture_bindings["right_open_palm"] == "toggle_pause"
+    assert profile.gesture_bindings["left_open_palm"] == "undo"
     assert profile.gesture_bindings["fist_pause"] == ""
-    assert profile.gesture_thresholds["two_fingers_up"].stability_frames == 3
+    assert profile.gesture_thresholds["two_fingers_up"].stability_frames == 2
+    assert profile.gesture_thresholds["left_open_palm"].stability_frames == 10
+    assert profile.gesture_thresholds["right_open_palm"].stability_frames == 60
 
 
 def test_pointer_click_fires_without_dwell_when_pointer_control_is_enabled() -> None:
@@ -19,7 +22,7 @@ def test_pointer_click_fires_without_dwell_when_pointer_control_is_enabled() -> 
     result = fusion.step((320, 240), "pointing_up")
 
     assert result.fired_action == "click"
-    assert result.state is State.COOLDOWN
+    assert result.state is State.ACTIVE
 
 
 def test_pointer_button_gestures_map_to_mouse_buttons() -> None:
@@ -28,8 +31,14 @@ def test_pointer_button_gestures_map_to_mouse_buttons() -> None:
 
     expected_actions = {
         "pointing_up": "click",
+        "left_pointing_up": "click",
+        "right_pointing_up": "click",
         "middle_up": "right_click",
+        "left_middle_up": "right_click",
+        "right_middle_up": "right_click",
         "two_fingers_up": "double_click",
+        "left_two_fingers_up": "double_click",
+        "right_two_fingers_up": "double_click",
     }
     for gesture, action in expected_actions.items():
         fusion = MultimodalFusion(profile)
@@ -38,7 +47,7 @@ def test_pointer_button_gestures_map_to_mouse_buttons() -> None:
         result = fusion.step((320, 240), gesture)
 
         assert result.fired_action == action
-        assert result.state is State.COOLDOWN
+        assert result.state is State.ACTIVE
 
 
 def test_pointer_click_waits_for_confirming_when_pointer_control_is_disabled() -> None:
@@ -71,6 +80,17 @@ def test_right_open_palm_resumes_from_idle() -> None:
     result = fusion.step((320, 240), "right_open_palm")
 
     assert result.fired_action == "resume"
+    assert result.state is State.ACTIVE
+
+
+def test_left_open_palm_fires_undo_when_active() -> None:
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step((320, 240), "left_open_palm")
+
+    assert result.fired_action == "undo"
     assert result.state is State.ACTIVE
 
 

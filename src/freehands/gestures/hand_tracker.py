@@ -43,8 +43,12 @@ except Exception as exc:  # pragma: no cover
 GestureId = Literal[
     "thumb_up", "thumb_down", "pointing_up", "middle_up", "two_fingers_up",
     "pinch_open", "pinch_close", "two_hands_together", "two_hands_apart",
-    "fist_pause", "open_palm", "right_open_palm", "none",
+    "fist_pause", "open_palm", "left_open_palm", "right_open_palm",
+    "left_pointing_up", "right_pointing_up", "left_middle_up", "right_middle_up",
+    "left_two_fingers_up", "right_two_fingers_up", "none",
 ]
+
+SIDE_AWARE_GESTURES = {"pointing_up", "middle_up", "two_fingers_up", "open_palm"}
 
 # Landmark indices
 WRIST = 0
@@ -99,7 +103,7 @@ class HandTracker:
                 return HandObservation("none", 0.0, None, [])
             hands = [np.array([[p.x, p.y, p.z] for p in item.landmark]) for item in result.multi_hand_landmarks]
             handedness = self._solution_handedness(result.multi_handedness)
-            gesture, conf = self._classify_multi(hands)
+            gesture, conf = self._classify_multi(hands, handedness)
             return HandObservation(gesture, conf, hands[0], hands, handedness)
 
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -110,17 +114,14 @@ class HandTracker:
 
         hands = [np.array([[p.x, p.y, p.z] for p in item]) for item in result.hand_landmarks]
         handedness = self._task_handedness(result.handedness)
-        gesture, conf = self._classify_multi(hands)
-        if result.gestures and result.gestures[0]:
-            top = result.gestures[0][0]
-            mapped = self._map_task_gesture(top.category_name)
-            if gesture not in {"two_hands_together", "two_hands_apart"} and mapped != "none" and float(top.score) >= 0.40:
-                gesture, conf = mapped, float(top.score)
+        gesture, conf = self._classify_multi(hands, handedness)
+        if result.gestures and any(result.gestures):
+            mapped = self._task_gesture(result.gestures, handedness)
+            if gesture not in {"two_hands_together", "two_hands_apart"} and mapped[0] != "none":
+                gesture, conf = mapped
         return HandObservation(gesture, conf, hands[0], hands, handedness)
 
-    def _map_task_gesture(self, category: str) -> GestureId:
-        if category == "Open_Palm":
-            return "right_open_palm"
+    def _map_task_gesture(self, category: str, handedness: str = "") -> GestureId:
         mapped: GestureId = {
             "Thumb_Up": "thumb_up",
             "Thumb_Down": "thumb_down",
@@ -129,9 +130,23 @@ class HandTracker:
             "Open_Palm": "open_palm",
             "Closed_Fist": "fist_pause",
         }.get(category, "none")
-        return mapped
+        return self._with_side(mapped, handedness)
 
-    def _classify_multi(self, hands: list[np.ndarray]) -> tuple[GestureId, float]:
+    def _task_gesture(self, gestures: list[list[object]], handedness: list[str]) -> tuple[GestureId, float]:
+        best: tuple[GestureId, float] = ("none", 0.0)
+        for index, candidates in enumerate(gestures):
+            if not candidates:
+                continue
+            top = candidates[0]
+            score = float(top.score)
+            if score < 0.40 or score <= best[1]:
+                continue
+            side = handedness[index] if index < len(handedness) else ""
+            best = self._map_task_gesture(top.category_name, side), score
+        return best
+
+    def _classify_multi(self, hands: list[np.ndarray], handedness: list[str] | None = None) -> tuple[GestureId, float]:
+        handedness = handedness or []
         if len(hands) >= 2:
             left, right = hands[0], hands[1]
             center_a = np.mean(left[:, :2], axis=0)
@@ -142,15 +157,18 @@ class HandTracker:
                 return "two_hands_together", 0.92
             if vertical_gap < 0.36 and dist > 0.48:
                 return "two_hands_apart", 0.90
-            classified = [self._classify(hand) for hand in hands]
+            classified = [
+                self._classify(hand, handedness[index] if index < len(handedness) else "")
+                for index, hand in enumerate(hands)
+            ]
             for gesture, conf in classified:
-                if gesture == "right_open_palm":
+                if gesture in {"left_open_palm", "right_open_palm"}:
                     return gesture, conf
             for gesture, conf in classified:
                 if gesture != "none":
                     return gesture, conf
             return "none", 0.0
-        return self._classify(hands[0])
+        return self._classify(hands[0], handedness[0] if handedness else "")
 
     @staticmethod
     def _solution_handedness(items: list[object] | None) -> list[str]:
@@ -172,7 +190,7 @@ class HandTracker:
         return labels
 
     # ── classification ────────────────────────────────────────────────────
-    def _classify(self, pts: np.ndarray) -> tuple[GestureId, float]:
+    def _classify(self, pts: np.ndarray, handedness: str = "") -> tuple[GestureId, float]:
         # Finger "extended" tests use y comparison vs PIP joint (image space)
         index_up   = pts[INDEX_TIP, 1]  < pts[INDEX_PIP, 1]
         middle_up  = pts[MIDDLE_TIP, 1] < pts[MIDDLE_PIP, 1]
@@ -194,11 +212,11 @@ class HandTracker:
             return "thumb_down", 0.92
 
         if index_up and middle_up and not any([ring_up, pinky_up]):
-            return "two_fingers_up", 0.90
+            return self._with_side("two_fingers_up", handedness), 0.90
         if index_up and not any([middle_up, ring_up, pinky_up]):
-            return "pointing_up", 0.90
+            return self._with_side("pointing_up", handedness), 0.90
         if middle_up and not any([index_up, ring_up, pinky_up]):
-            return "middle_up", 0.88
+            return self._with_side("middle_up", handedness), 0.88
 
         # Pinch: distance index_tip ↔ thumb_tip
         d = float(np.linalg.norm(pts[INDEX_TIP, :2] - pts[THUMB_TIP, :2]))
@@ -213,9 +231,21 @@ class HandTracker:
         self._prev_pinch_dist = d
 
         if gesture == "none" and all([index_up, middle_up, ring_up, pinky_up]):
-            return "right_open_palm", 0.90
+            return self._with_side("open_palm", handedness), 0.90
 
         return gesture, conf
+
+    @staticmethod
+    def _with_side(gesture: GestureId, handedness: str = "") -> GestureId:
+        if gesture not in SIDE_AWARE_GESTURES:
+            return gesture
+        if handedness == "Left":
+            return f"left_{gesture}"  # type: ignore[return-value]
+        if handedness == "Right":
+            return f"right_{gesture}"  # type: ignore[return-value]
+        if gesture == "open_palm":
+            return "right_open_palm"
+        return gesture
 
     def close(self) -> None:
         self._hands.close()

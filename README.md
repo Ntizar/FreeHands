@@ -71,16 +71,17 @@ Profiles are stored locally under `%LOCALAPPDATA%\Ntizar\FreeHands\profiles` on 
 
 ## Desktop Control
 
-When the local app is active, gaze moves the real Windows pointer at a throttled rate. If your gaze stays inside the same screen zone for about one second, FreeHands switches into fine aim and damps the pointer around that target to make precise clicks easier. Gestures confirm actions:
+When the local app is active, gaze moves the real Windows pointer at a throttled rate. If your gaze stays inside the same screen zone for about one second, FreeHands switches into fine aim and damps the pointer around that target to make precise clicks easier. Click gestures are direct and fast: raising the index finger emits a normal OS click without waiting for dwell or a long cooldown. Safety gestures stay slower.
 
 | Gesture | Default action |
 | --- | --- |
-| Index up | Click |
-| Middle finger up | Right click |
-| Index + middle | Double click |
+| Left or right index up | Click |
+| Left or right middle finger up | Right click |
+| Left or right index + middle | Double click |
 | Hands together | Zoom in |
 | Hands apart | Zoom out |
-| Right open palm | Toggle active / paused |
+| Left open palm | Undo / go back one action |
+| Right open palm held about 2 seconds | Toggle active / paused |
 
 The small control panel shows the current state, gaze source, confidence, cursor position and detected gesture. The transparent overlay shows the gaze cursor and dwell ring. Move the mouse to a screen corner to trigger the PyAutoGUI failsafe if you need to abort quickly.
 
@@ -108,7 +109,7 @@ Recommended setup:
 2. Use the camera selector if the wrong webcam is active.
 3. Run the game in windowed or borderless mode.
 4. Keep the FreeHands panel visible at first.
-5. Use the right open palm to pause before menus, alt-tab, or risky clicks.
+5. Hold the right open palm for about 2 seconds to pause before menus, alt-tab, or risky clicks.
 
 ## Calibration Tips
 

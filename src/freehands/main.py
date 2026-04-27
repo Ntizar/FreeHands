@@ -166,6 +166,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     fine_aim = FineAimPointer()
     last_pointer_move_at = 0.0
     last_pointer_xy: tuple[int, int] | None = None
+    pause_score = 0.0
     pause_hold_fired = False
 
     overlay = GazeOverlay()
@@ -237,7 +238,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy, pause_hold_fired
+        nonlocal last_pointer_move_at, last_pointer_xy, pause_score, pause_hold_fired
         frame = camera.read()
         if frame is None:
             return
@@ -255,20 +256,25 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         confirmed = stabilizer.update(hand_obs.gesture, hand_obs.confidence)
         action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
         pause_required = profile.gesture_thresholds.get("right_open_palm")
-        pause_progress = 0.0
-        if hand_obs.gesture in {"right_open_palm", "left_open_palm"} and pause_required is not None:
-            pause_progress = min(
-                1.0,
-                stabilizer.hold_progress_any(
-                    ("right_open_palm", "left_open_palm"),
-                    pause_required.stability_frames,
-                ),
-            )
-            if pause_progress >= 1.0 and not pause_hold_fired:
-                confirmed = "right_open_palm"
-                action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
-                pause_hold_fired = True
+        # Leaky integrator for the palm-hold pause toggle: tolerates short
+        # detection gaps (briefly losing the hand, mediapipe glitches, brief
+        # finger flicker) so the bar that fills on screen actually corresponds
+        # to a real toggle.
+        required_palm_frames = pause_required.stability_frames if pause_required is not None else 60
+        if hand_obs.gesture in {"right_open_palm", "left_open_palm"}:
+            pause_score = min(required_palm_frames + 6.0, pause_score + 1.0)
+        elif hand_obs.gesture == "none":
+            pause_score = max(0.0, pause_score - 0.5)
         else:
+            pause_score = max(0.0, pause_score - 2.0)
+        pause_progress = min(1.0, pause_score / required_palm_frames) if required_palm_frames > 0 else 0.0
+        if pause_score >= required_palm_frames and not pause_hold_fired:
+            confirmed = "right_open_palm"
+            action = action_for_gesture(profile.gesture_bindings, confirmed) or ""
+            pause_hold_fired = True
+            pause_score = 0.0  # next hold must start from scratch
+            stabilizer.reset()  # let the next post-pause click rearm cleanly
+        if pause_score <= required_palm_frames * 0.25:
             pause_hold_fired = False
         debug = gaze_tracker.last_debug
         gaze_source = "pupil" if debug.pupil_detected else "iris" if debug.iris_detected else "no eyes"
@@ -308,7 +314,11 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             overlay.flash_action(result.fired_action)
             panel.set_last_action(result.fired_action)
             if result.fired_action not in {"toggle_pause", "resume"}:
-                dispatcher.execute(result.fired_action, at_xy=result.cursor_xy)
+                # If gaze briefly dropped (cursor None) but we still have a
+                # recent OS pointer position, click there instead of skipping
+                # the action — clicks must always land somewhere reasonable.
+                click_xy = result.cursor_xy if result.cursor_xy is not None else last_pointer_xy
+                dispatcher.execute(result.fired_action, at_xy=click_xy)
 
         if voice_listener is not None:
             for err in voice_listener.drain_errors():

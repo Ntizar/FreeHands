@@ -38,10 +38,12 @@ class ActionDispatcher:
         elif action == "right_click":
             pyautogui.rightClick(*click_xy) if click_xy is not None else pyautogui.rightClick()
         elif action == "double_click":
+            # Use Windows-native double click semantics so apps (Explorer,
+            # desktop, native dialogs) actually register it as a double click.
             if click_xy is not None:
-                pyautogui.click(*click_xy, clicks=2, interval=0.10)
+                pyautogui.doubleClick(*click_xy)
             else:
-                pyautogui.click(clicks=2, interval=0.10)
+                pyautogui.doubleClick()
         elif action == "escape":
             pyautogui.press("escape")
         elif action == "zoom_in":

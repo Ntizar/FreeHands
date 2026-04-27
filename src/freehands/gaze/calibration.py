@@ -15,8 +15,9 @@ from ..profiles.store import GazeModel
 
 
 LEGACY_GAZE_FEATURE_VERSION = 1
-CURRENT_GAZE_FEATURE_VERSION = 3
-HEAD_POSE_WEIGHT = 0.35
+CURRENT_GAZE_FEATURE_VERSION = 4
+EYE_SIGNAL_WEIGHT = 0.65
+HEAD_POSE_WEIGHT = 1.85
 MIN_OUTPUT_GAIN = 0.65
 MAX_OUTPUT_GAIN = 25.0
 MIN_GAZE_WEIGHT_NORM = 1e-3
@@ -38,10 +39,10 @@ def build_gaze_design_vector(
 
     left_x, left_y, right_x, right_y, head_x, head_y = raw
     return np.array([
-        left_x,
-        left_y,
-        right_x,
-        right_y,
+        left_x * EYE_SIGNAL_WEIGHT,
+        left_y * EYE_SIGNAL_WEIGHT,
+        right_x * EYE_SIGNAL_WEIGHT,
+        right_y * EYE_SIGNAL_WEIGHT,
         head_x * HEAD_POSE_WEIGHT,
         head_y * HEAD_POSE_WEIGHT,
     ], dtype=float)

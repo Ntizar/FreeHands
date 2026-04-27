@@ -155,12 +155,12 @@ Por defecto FreeHands usa `faster_whisper` porque es más ligero para comandos c
 
 Inspirado en `aim_botz` de Counter-Strike. Cuatro fases:
 
-1. **Calibración de mirada** — empieza por las 4 esquinas, sigue con puntos de ajuste y entrena un modelo **ridge regression** personalizado con pupila/iris + nariz como referencia.
+1. **Calibración de mirada** — empieza por las 4 esquinas, sigue con puntos de ajuste y entrena un modelo **ridge regression** personalizado con más peso de nariz/cabeza y menos dependencia de pupila/iris.
 2. **Ronda de gestos** — repite cada gesto dos veces para calcular umbrales robustos: índice = clic, dedo medio = clic derecho, índice+medio = doble clic, manos juntas = zoom +, manos separadas = zoom -, puño = activar/pausar.
 3. **Voz local** — comandos en español con wake word (`FreeHands` / `Ntizar`) usando faster-whisper.
 4. **Validación final** — tareas reales sin ratón. Si el éxito < 80 %, sugiere recalibrar.
 
-La versión actual de mirada usa `feature_version=3`, así que los perfiles antiguos se consideran
+La versión actual de mirada usa `feature_version=4`, así que los perfiles antiguos se consideran
 obsoletos y `run` abrirá una recalibración de mirada automáticamente. En la ventana de control
 verás si la app está usando pupila oscura, iris, cursor estimado y el gesto activo.
 

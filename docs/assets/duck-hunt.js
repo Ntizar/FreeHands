@@ -201,8 +201,9 @@ function makeDuck() {
   group.add(eye);
 
   group.userData = {
-    speed: 0.65 + Math.random() * 0.85,
-    amp: 8 + Math.random() * 12,
+    speedY: 0.65 + Math.random() * 1.55,
+    speedX: (Math.random() - 0.5) * 0.9,
+    amp: 10 + Math.random() * 18,
     phase: Math.random() * Math.PI * 2,
   };
   return group;
@@ -211,11 +212,10 @@ function makeDuck() {
 function spawnDuck() {
   if (spawned >= TOTAL_DUCKS) return;
   const duck = makeDuck();
-  const direction = Math.random() > 0.5 ? 1 : -1;
-  duck.position.x = direction > 0 ? -innerWidth / 2 - 80 : innerWidth / 2 + 80;
-  duck.position.y = -innerHeight * 0.12 + Math.random() * innerHeight * 0.48;
-  duck.scale.x = direction;
-  duck.userData.direction = direction;
+  const startX = -innerWidth / 2 + 100 + Math.random() * Math.max(120, innerWidth - 200);
+  duck.position.x = startX;
+  duck.position.y = -innerHeight / 2 - 90 - Math.random() * 90;
+  duck.scale.x = duck.userData.speedX >= 0 ? 1 : -1;
   scene.add(duck);
   ducks.push(duck);
   spawned++;
@@ -323,10 +323,10 @@ function animate(now = 0) {
   if (spawned < TOTAL_DUCKS && (ducks.length < 2 || Math.random() < 0.008)) spawnDuck();
 
   for (const duck of [...ducks]) {
-    duck.position.x += duck.userData.direction * duck.userData.speed;
-    duck.position.y += Math.sin(now * 0.006 + duck.userData.phase) * 0.45;
+    duck.position.y += duck.userData.speedY;
+    duck.position.x += duck.userData.speedX + Math.sin(now * 0.004 + duck.userData.phase) * 0.22;
     duck.rotation.z = Math.sin(now * 0.008 + duck.userData.phase) * 0.08;
-    if (duck.position.x < -innerWidth / 2 - 140 || duck.position.x > innerWidth / 2 + 140) {
+    if (duck.position.y > innerHeight / 2 + 150 || duck.position.x < -innerWidth / 2 - 160 || duck.position.x > innerWidth / 2 + 160) {
       scene.remove(duck);
       ducks = ducks.filter((item) => item !== duck);
     }

@@ -25,9 +25,9 @@ def test_build_gaze_design_vector_keeps_legacy_features() -> None:
     )
 
 
-def test_build_gaze_design_vector_reduces_head_pose_weight_in_current_version() -> None:
+def test_build_gaze_design_vector_prefers_head_pose_in_current_version() -> None:
     raw = np.array([0.2, 0.4, 0.6, 0.8, 1.0, 1.2])
-    expected = np.array([0.2, 0.4, 0.6, 0.8, 0.35, 0.42])
+    expected = np.array([0.13, 0.26, 0.39, 0.52, 1.85, 2.22])
     np.testing.assert_allclose(
         build_gaze_design_vector(raw, CURRENT_GAZE_FEATURE_VERSION),
         expected,
@@ -71,6 +71,16 @@ def test_fit_gaze_model_marks_current_feature_version() -> None:
     assert len(model.weights_y) == 6
 
 
+def test_current_gaze_model_invalidates_v3_eye_heavy_profiles() -> None:
+    old = GazeModel(
+        feature_version=3,
+        weights_x=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        weights_y=[0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+    )
+    assert not gaze_model_is_current(old)
+    assert not gaze_model_is_usable(old)
+
+
 def test_fit_gaze_model_can_expand_small_feature_ranges_to_screen_space() -> None:
     samples = [
         CalibrationSample(np.array([0.42, 0.48, 0.58, 0.47, 0.02, 0.00]), (120.0, 120.0)),
@@ -81,7 +91,21 @@ def test_fit_gaze_model_can_expand_small_feature_ranges_to_screen_space() -> Non
     model = fit_gaze_model(samples)
     regressor = GazeRegressor(model, (1920, 1080))
     outputs = np.array([regressor.predict(sample.features) for sample in samples], dtype=float)
-    assert np.ptp(outputs[:, 0]) > 900
+    assert np.ptp(outputs[:, 0]) > 800
+
+
+def test_fit_gaze_model_tracks_head_pose_when_eye_signal_is_small() -> None:
+    samples = [
+        CalibrationSample(np.array([0.48, 0.50, 0.52, 0.50, 0.18, -0.08]), (120.0, 120.0)),
+        CalibrationSample(np.array([0.49, 0.50, 0.51, 0.50, 0.06, -0.04]), (640.0, 250.0)),
+        CalibrationSample(np.array([0.51, 0.50, 0.49, 0.50, -0.06, 0.04]), (1280.0, 720.0)),
+        CalibrationSample(np.array([0.52, 0.50, 0.48, 0.50, -0.18, 0.08]), (1820.0, 940.0)),
+    ]
+    model = fit_gaze_model(samples)
+    regressor = GazeRegressor(model, (1920, 1080))
+    outputs = np.array([regressor.predict(sample.features) for sample in samples], dtype=float)
+    assert np.ptp(outputs[:, 0]) > 1100
+    assert np.ptp(outputs[:, 1]) > 550
 
 
 def test_gaze_model_has_signal_detects_dead_centered_model() -> None:

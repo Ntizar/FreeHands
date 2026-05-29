@@ -12,6 +12,17 @@ from .state_machine import State, StateMachine
 
 
 DIRECT_POINTER_ACTIONS = {"click", "right_click", "double_click", "undo"}
+
+# Palm-scroll gestures map directly to scroll actions (no dwell needed).
+PALM_SCROLL_ACTIONS = {
+    "palm_scroll_up": "scroll_up",
+    "palm_scroll_down": "scroll_down",
+    "left_palm_scroll_up": "scroll_up",
+    "left_palm_scroll_down": "scroll_down",
+    "right_palm_scroll_up": "scroll_up",
+    "right_palm_scroll_down": "scroll_down",
+}
+
 SIDE_BINDING_FALLBACKS = {
     "left_pointing_up": "pointing_up",
     "right_pointing_up": "pointing_up",
@@ -74,6 +85,12 @@ class MultimodalFusion:
     ) -> FusionResult:
         bindings = self.profile.gesture_bindings
         candidate_action = action_for_gesture(bindings, confirmed_gesture)
+
+        # Palm-scroll gestures fire immediately (no dwell, no state machine).
+        if confirmed_gesture and confirmed_gesture in PALM_SCROLL_ACTIONS:
+            scroll_action = PALM_SCROLL_ACTIONS[confirmed_gesture]
+            self._last_action_at = time.monotonic()
+            return FusionResult(cursor_xy, self.sm.state, 0.0, scroll_action)
 
         # Any gesture explicitly mapped to toggle_pause is honoured in any state.
         if confirmed_gesture and candidate_action == "toggle_pause":

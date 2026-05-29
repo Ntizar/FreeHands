@@ -26,6 +26,13 @@ GESTURE_LABELS = {
     "pinch_open": "🤏↔ Pinch open",
     "pinch_close": "🤏 Pinch close",
     "fist_pause": "✊ Closed fist",
+    # Palm-scroll gestures
+    "palm_scroll_up": "🖐↓ Palm scroll up",
+    "palm_scroll_down": "🖐↑ Palm scroll down",
+    "left_palm_scroll_up": "👈🖐↓ Left palm scroll up",
+    "left_palm_scroll_down": "👈🖐↑ Left palm scroll down",
+    "right_palm_scroll_up": "👉🖐↓ Right palm scroll up",
+    "right_palm_scroll_down": "👉🖐↑ Right palm scroll down",
 }
 
 ACTION_OPTIONS = {

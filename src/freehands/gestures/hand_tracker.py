@@ -46,9 +46,18 @@ GestureId = Literal[
     "fist_pause", "open_palm", "left_open_palm", "right_open_palm",
     "left_pointing_up", "right_pointing_up", "left_middle_up", "right_middle_up",
     "left_two_fingers_up", "right_two_fingers_up", "none",
+    # Palm-scroll gestures (motion-based, not static pose)
+    "palm_scroll_up", "palm_scroll_down",
+    "left_palm_scroll_up", "left_palm_scroll_down",
+    "right_palm_scroll_up", "right_palm_scroll_down",
 ]
 
 SIDE_AWARE_GESTURES = {"pointing_up", "middle_up", "two_fingers_up", "open_palm"}
+
+# Palm-scroll: minimum vertical displacement (normalised image coords) to fire
+PALM_SCROLL_THRESHOLD = 0.015
+# How many frames a palm-scroll gesture is valid after last movement
+PALM_SCROLL_COOLDOWN_FRAMES = 3
 
 # Landmark indices
 WRIST = 0
@@ -93,6 +102,10 @@ class HandTracker:
             detail = f": {_mp_error or _mp_tasks_error}" if (_mp_error or _mp_tasks_error) else ""
             raise RuntimeError("MediaPipe Hands/GestureRecognizer is required" + detail)
         self._prev_pinch_dist: float | None = None
+        # Palm-scroll tracking: (wrist_y, timestamp) for each hand
+        self._palm_y: dict[int, float] = {}
+        self._palm_scroll_cooldown: dict[int, int] = {}
+        self._palm_frame_counter = 0
 
     def set_handedness_swapped(self, enabled: bool) -> None:
         self._swap_handedness = enabled
@@ -104,16 +117,20 @@ class HandTracker:
             result = self._hands.process(rgb)
             if not result.multi_hand_landmarks:
                 self._prev_pinch_dist = None
+                self._palm_y.clear()
                 return HandObservation("none", 0.0, None, [])
             hands = [np.array([[p.x, p.y, p.z] for p in item.landmark]) for item in result.multi_hand_landmarks]
             handedness = self._normalize_handedness(self._solution_handedness(result.multi_handedness))
             gesture, conf = self._classify_multi(hands, handedness)
+            # Enhance with palm-scroll detection
+            gesture = self._detect_palm_scroll(gesture, hands, handedness)
             return HandObservation(gesture, conf, hands[0], hands, handedness)
 
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = self._hands.recognize(image)
         if not result.hand_landmarks:
             self._prev_pinch_dist = None
+            self._palm_y.clear()
             return HandObservation("none", 0.0, None, [])
 
         hands = [np.array([[p.x, p.y, p.z] for p in item]) for item in result.hand_landmarks]
@@ -123,6 +140,8 @@ class HandTracker:
             mapped = self._task_gesture(result.gestures, handedness)
             if gesture not in {"two_hands_together", "two_hands_apart"} and mapped[0] != "none":
                 gesture, conf = mapped
+        # Enhance with palm-scroll detection
+        gesture = self._detect_palm_scroll(gesture, hands, handedness)
         return HandObservation(gesture, conf, hands[0], hands, handedness)
 
     def _map_task_gesture(self, category: str, handedness: str = "") -> GestureId:
@@ -270,6 +289,50 @@ class HandTracker:
             return f"right_{gesture}"  # type: ignore[return-value]
         if gesture == "open_palm":
             return "open_palm"
+        return gesture
+
+    # ── palm-scroll detection ─────────────────────────────────────────────
+    # Detects vertical hand motion when the hand is in open-palm state.
+    # The gesture returned overrides the static pose so the fusion layer
+    # sees palm_scroll_up / palm_scroll_down instead of open_palm.
+
+    def _detect_palm_scroll(
+        self,
+        gesture: GestureId,
+        hands: list[np.ndarray],
+        handedness: list[str],
+    ) -> GestureId:
+        """Return a palm-scroll gesture if the open palm moved vertically."""
+        self._palm_frame_counter += 1
+        side_prefix = ""
+
+        # Work on single hands first (multi-hand palm-scroll is rare)
+        for idx, (pts, side) in enumerate(zip(hands, handedness)):
+            if side not in ("Left", "Right"):
+                continue
+            wrist_y = float(pts[WRIST, 1])
+
+            # Track palm position across frames
+            prev_y = self._palm_y.get(idx)
+            if prev_y is not None:
+                # Decrement cooldown
+                cd = self._palm_scroll_cooldown.get(idx, 0)
+                if cd > 0:
+                    self._palm_scroll_cooldown[idx] = cd - 1
+                    continue
+
+                delta_y = wrist_y - prev_y
+                # In image coords, Y increases downward.
+                # Hand moving UP (towards top of screen) → delta_y < 0 → scroll_down
+                # Hand moving DOWN (towards bottom of screen) → delta_y > 0 → scroll_up
+                if abs(delta_y) >= PALM_SCROLL_THRESHOLD:
+                    direction = "up" if delta_y > 0 else "down"
+                    scroll_gesture = f"{side_prefix}{side.lower()}_palm_scroll_{direction}"
+                    self._palm_scroll_cooldown[idx] = PALM_SCROLL_COOLDOWN_FRAMES
+                    return scroll_gesture
+
+            self._palm_y[idx] = wrist_y
+
         return gesture
 
     def close(self) -> None:

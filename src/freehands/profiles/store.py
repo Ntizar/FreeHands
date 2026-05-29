@@ -36,6 +36,13 @@ GESTURE_BINDING_PRIORITY = [
     "pinch_open",
     "pinch_close",
     "fist_pause",
+    # Palm-scroll gestures
+    "palm_scroll_up",
+    "palm_scroll_down",
+    "left_palm_scroll_up",
+    "left_palm_scroll_down",
+    "right_palm_scroll_up",
+    "right_palm_scroll_down",
 ]
 
 INSTANT_MOUSE_GESTURES = (
@@ -48,6 +55,13 @@ INSTANT_MOUSE_GESTURES = (
     "right_middle_up",
     "left_two_fingers_up",
     "right_two_fingers_up",
+    # Palm-scroll gestures are inherently instant (motion-based)
+    "palm_scroll_up",
+    "palm_scroll_down",
+    "left_palm_scroll_up",
+    "left_palm_scroll_down",
+    "right_palm_scroll_up",
+    "right_palm_scroll_down",
 )
 
 CLICK_FAMILY_GESTURES = {
@@ -134,6 +148,13 @@ class Profile(BaseModel):
             "left_open_palm": "",
             "right_open_palm": "toggle_pause",
             "fist_pause":  "",
+            # Palm-scroll gestures (motion-based, auto-detected)
+            "palm_scroll_up": "scroll_up",
+            "palm_scroll_down": "scroll_down",
+            "left_palm_scroll_up": "scroll_up",
+            "left_palm_scroll_down": "scroll_down",
+            "right_palm_scroll_up": "scroll_up",
+            "right_palm_scroll_down": "scroll_down",
         }
     )
     voice_enabled: bool = True

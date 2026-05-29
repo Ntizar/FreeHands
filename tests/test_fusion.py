@@ -146,3 +146,95 @@ def test_repeated_clicks_never_get_throttled_by_side_jitter() -> None:
     fired = [fusion.step((320, 240), gesture).fired_action for gesture in sequence]
 
     assert fired == ["click"] * len(sequence)
+
+
+# ── Palm-scroll tests ──────────────────────────────────────────────────────
+
+def test_palm_scroll_up_fires_scroll_up() -> None:
+    """Palm-scroll-up gesture should immediately fire scroll_up action."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step((320, 240), "palm_scroll_up")
+
+    assert result.fired_action == "scroll_up"
+    assert result.state is State.ACTIVE
+
+
+def test_palm_scroll_down_fires_scroll_down() -> None:
+    """Palm-scroll-down gesture should immediately fire scroll_down action."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step((320, 240), "palm_scroll_down")
+
+    assert result.fired_action == "scroll_down"
+    assert result.state is State.ACTIVE
+
+
+def test_palm_scroll_works_in_idle_state() -> None:
+    """Palm-scroll should fire even when state is IDLE (no activation needed)."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    # Not calling activate() — stays IDLE
+
+    result = fusion.step((320, 240), "palm_scroll_up")
+
+    assert result.fired_action == "scroll_up"
+    assert result.state is State.IDLE
+
+
+def test_palm_scroll_bypasses_dwell() -> None:
+    """Palm-scroll should not require dwell confirmation."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    # With a normal gesture, idle state returns None
+    result = fusion.step((320, 240), "pointing_up")
+    assert result.fired_action is None
+
+    # But palm-scroll fires immediately
+    result = fusion.step((320, 240), "palm_scroll_down")
+    assert result.fired_action == "scroll_down"
+
+
+def test_all_palm_scroll_gestures_map_correctly() -> None:
+    """All side-specific palm-scroll gestures should map to correct scroll actions."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    expected = {
+        "palm_scroll_up": "scroll_up",
+        "palm_scroll_down": "scroll_down",
+        "left_palm_scroll_up": "scroll_up",
+        "left_palm_scroll_down": "scroll_down",
+        "right_palm_scroll_up": "scroll_up",
+        "right_palm_scroll_down": "scroll_down",
+    }
+    for gesture, expected_action in expected.items():
+        result = fusion.step((320, 240), gesture)
+        assert result.fired_action == expected_action, f"Gesture {gesture} should fire {expected_action}"
+
+
+def test_palm_scroll_does_not_change_state() -> None:
+    """Palm-scroll should not transition the state machine."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    for _ in range(5):
+        result = fusion.step((320, 240), "palm_scroll_up")
+        assert result.state is State.ACTIVE
+
+
+def test_palm_scroll_gestures_in_profile_bindings() -> None:
+    """Palm-scroll gestures should be present in default profile bindings."""
+    profile = Profile(user_id="test")
+    assert profile.gesture_bindings["palm_scroll_up"] == "scroll_up"
+    assert profile.gesture_bindings["palm_scroll_down"] == "scroll_down"
+    assert profile.gesture_bindings["left_palm_scroll_up"] == "scroll_up"
+    assert profile.gesture_bindings["right_palm_scroll_down"] == "scroll_down"

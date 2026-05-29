@@ -1,6 +1,8 @@
 """Translates abstract action names into OS-level events via pyautogui."""
 from __future__ import annotations
 
+import sys
+
 import pyautogui
 
 pyautogui.FAILSAFE = True   # move mouse to a screen corner to abort
@@ -8,7 +10,9 @@ pyautogui.PAUSE = 0
 
 ACTIONS = {"click", "right_click", "double_click", "escape",
            "zoom_in", "zoom_out", "scroll_up", "scroll_down",
-           "undo", "toggle_pause", "resume"}
+           "undo", "toggle_pause", "resume",
+           "show_desktop", "screenshot",
+           "volume_up", "volume_down", "volume_mute"}
 
 
 class ActionDispatcher:
@@ -56,5 +60,24 @@ class ActionDispatcher:
             pyautogui.scroll(-3)
         elif action == "undo":
             pyautogui.hotkey("ctrl", "z")
+        # ── System commands ────────────────────────────────────────────────
+        elif action == "show_desktop":
+            # Windows: Show desktop (Win+D). Cross-platform fallback: Escape.
+            if sys.platform == "win32":
+                pyautogui.hotkey("win", "d")
+            else:
+                pyautogui.press("escape")
+        elif action == "screenshot":
+            # Windows: PrintScreen. Cross-platform fallback: no-op with print.
+            if sys.platform == "win32":
+                pyautogui.hotkey("win", "shift", "s")
+            else:
+                print("[freehands] screenshot: no screenshot shortcut on this platform")
+        elif action == "volume_up":
+            pyautogui.press("volumeup")
+        elif action == "volume_down":
+            pyautogui.press("volumedown")
+        elif action == "volume_mute":
+            pyautogui.press("volumemute")
         # toggle_pause / resume are handled by the UI overlay, not pyautogui.
         return True

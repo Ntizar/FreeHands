@@ -317,6 +317,11 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         if fusion.sm.state == State.IDLE:
             overlay.flash_action("voice ignored: paused")
             return
+        # System commands are always executed regardless of state (safety controls).
+        if action in {"show_desktop", "screenshot", "volume_up", "volume_down", "volume_mute"}:
+            if dispatcher.execute(action, at_xy=cursor):
+                overlay.flash_action(f"voice: {action}")
+            return
         if dispatcher.execute(action, at_xy=cursor):
             overlay.flash_action(f"voice: {action}")
 

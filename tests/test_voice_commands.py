@@ -39,6 +39,52 @@ def test_voice_custom_wake_words() -> None:
     assert parse_voice_command("Ntizar clic", wake_words=("control",)) is None
 
 
+def test_voice_system_commands_no_wake_word() -> None:
+    """System commands (show desktop, screenshot, volume) work without wake word."""
+    # Show desktop
+    assert parse_voice_command("show desktop") == "show_desktop"
+    assert parse_voice_command("mostrar escritorio") == "show_desktop"
+    assert parse_voice_command("escritorio") == "show_desktop"
+    assert parse_voice_command("minimizar todo") == "show_desktop"
+    assert parse_voice_command("minimiza todo") == "show_desktop"
+
+    # Screenshot
+    assert parse_voice_command("screenshot") == "screenshot"
+    assert parse_voice_command("captura de pantalla") == "screenshot"
+    assert parse_voice_command("foto pantalla") == "screenshot"
+    assert parse_voice_command("captura pantalla") == "screenshot"
+
+    # Volume up
+    assert parse_voice_command("volume up") == "volume_up"
+    assert parse_voice_command("subir volumen") == "volume_up"
+    assert parse_voice_command("volumen arriba") == "volume_up"
+    assert parse_voice_command("mas volumen") == "volume_up"
+    assert parse_voice_command("sube volumen") == "volume_up"
+
+    # Volume down
+    assert parse_voice_command("volume down") == "volume_down"
+    assert parse_voice_command("bajar volumen") == "volume_down"
+    assert parse_voice_command("volumen abajo") == "volume_down"
+    assert parse_voice_command("menos volumen") == "volume_down"
+    assert parse_voice_command("baja volumen") == "volume_down"
+
+    # Mute
+    assert parse_voice_command("mute") == "volume_mute"
+    assert parse_voice_command("silencio") == "volume_mute"
+    assert parse_voice_command("silenciar") == "volume_mute"
+    assert parse_voice_command("mudo") == "volume_mute"
+    assert parse_voice_command("muted") == "volume_mute"
+    assert parse_voice_command("quitar sonido") == "volume_mute"
+
+
+def test_voice_system_commands_with_wake_word() -> None:
+    """System commands also work when wake word is present."""
+    assert parse_voice_command("FreeHands subir volumen") == "volume_up"
+    assert parse_voice_command("Ntizar captura de pantalla") == "screenshot"
+    assert parse_voice_command("FreeHands mostrar escritorio") == "show_desktop"
+    assert parse_voice_command("Ntizar silenciar") == "volume_mute"
+
+
 def test_experimental_backend_keeps_faster_whisper_fallback_notice(monkeypatch) -> None:
     class FakeStream:
         def __init__(self, *args, **kwargs) -> None:

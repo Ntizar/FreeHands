@@ -28,12 +28,18 @@ COMMAND_PHRASES: dict[str, tuple[str, ...]] = {
     "right_click": ("right click", "context menu", "click derecho", "clic derecho", "boton derecho", "menu contextual"),
     "zoom_in": ("zoom in", "zoom mas", "acercar", "ampliar", "aumentar"),
     "zoom_out": ("zoom out", "zoom menos", "alejar", "reducir", "disminuir"),
-    "scroll_up": ("scroll up", "page up", "scroll arriba", "desplaza arriba", "sube", "subir"),
-    "scroll_down": ("scroll down", "page down", "scroll abajo", "desplaza abajo", "baja", "bajar"),
+    "scroll_up": ("scroll up", "page up", "scroll arriba", "desplaza arriba", "sube"),
+    "scroll_down": ("scroll down", "page down", "scroll abajo", "desplaza abajo", "baja"),
     "toggle_pause": ("pause", "stop", "pausa", "pausar", "detente"),
     "resume": ("resume", "continue", "start", "activate", "reanudar", "continua", "continuar", "activar", "despausar"),
     "escape": ("escape", "esc", "cancel", "back", "cancelar", "cancela", "atras"),
     "click": ("click", "select", "clic", "pincha", "selecciona", "seleccionar"),
+    # ── System commands (voice-only, no wake word needed — safety controls) ──
+    "show_desktop": ("show desktop", "mostrar escritorio", "escritorio", "minimizar todo", "minimiza todo"),
+    "screenshot": ("screenshot", "captura de pantalla", "foto pantalla", "captura pantalla"),
+    "volume_up": ("volume up", "subir volumen", "volumen arriba", "mas volumen", "sube volumen", "volumen mas"),
+    "volume_down": ("volume down", "bajar volumen", "volumen abajo", "menos volumen", "baja volumen", "volumen menos"),
+    "volume_mute": ("mute", "silencio", "silenciar", "mudo", "muted", "quitar sonido"),
 }
 
 
@@ -42,6 +48,10 @@ def _normalise(text: str) -> str:
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = re.sub(r"[^a-z0-9ñ\s]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+SYSTEM_COMMANDS = {"show_desktop", "screenshot", "volume_up", "volume_down", "volume_mute"}
+SAFETY_COMMANDS = {"toggle_pause", "resume", "show_desktop", "screenshot", "volume_up", "volume_down", "volume_mute"}
 
 
 def parse_voice_command(
@@ -53,8 +63,8 @@ def parse_voice_command(
     """Map a transcript to an action id.
 
     By default we require a wake word (``FreeHands`` or ``Ntizar``) to reduce
-    accidental activations. Pause/resume are allowed without wake word because
-    they are safety controls.
+    accidental activations. Safety controls (pause/resume, system commands)
+    are allowed without wake word.
     """
     norm = _normalise(text)
     if not norm:
@@ -67,7 +77,16 @@ def parse_voice_command(
             norm = norm.replace(wake, " ")
         norm = re.sub(r"\s+", " ", norm).strip()
 
+    # Check system commands first (higher priority, no wake word needed)
     for action, phrases in COMMAND_PHRASES.items():
+        if action in SYSTEM_COMMANDS:
+            if any(phrase in norm for phrase in phrases):
+                return action
+
+    # Then check regular commands (wake word required unless safety control)
+    for action, phrases in COMMAND_PHRASES.items():
+        if action in SYSTEM_COMMANDS:
+            continue
         if require_wake_word and not has_wake and action not in {"toggle_pause", "resume"}:
             continue
         if any(phrase in norm for phrase in phrases):

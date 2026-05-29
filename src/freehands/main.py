@@ -25,6 +25,7 @@ from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gaze.dead_zones import DeadZoneClamper
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import GestureThreshold, load_profile, save_profile
+from .ui.audio_feedback import AudioFeedback
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .voice import VoiceListener
 
@@ -245,6 +246,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     )
     fusion = MultimodalFusion(profile)
     dispatcher = ActionDispatcher()
+    audio_feedback = AudioFeedback(enabled=profile.audio_feedback_enabled)
     voice_listener: VoiceListener | None = None
     fine_aim = FineAimPointer()
     pause_hold = PauseHoldGate()
@@ -400,6 +402,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 # the action — clicks must always land somewhere reasonable.
                 click_xy = result.cursor_xy if result.cursor_xy is not None else last_pointer_xy
                 dispatcher.execute(result.fired_action, at_xy=click_xy)
+                audio_feedback.play_gesture_confirmation()
 
         if voice_listener is not None:
             for err in voice_listener.drain_errors():
@@ -407,6 +410,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             for cmd in voice_listener.drain_commands():
                 print(f"[voice] {cmd.text!r} -> {cmd.action}")
                 handle_voice_action(cmd.action, result.cursor_xy)
+                audio_feedback.play_voice_confirmation()
 
     timer = QtCore.QTimer()
     timer.timeout.connect(tick)

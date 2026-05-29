@@ -22,6 +22,7 @@ from .config import (
 )
 from .fusion import MultimodalFusion, State, action_for_gesture
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
+from .gaze.dead_zones import DeadZoneClamper
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import GestureThreshold, load_profile, save_profile
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
@@ -231,6 +232,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     hand_tracker = HandTracker()
     hand_tracker.set_handedness_swapped(profile.swap_handedness)
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))
+    dead_zone = DeadZoneClamper(screen.width(), screen.height())
     gesture_thresholds = {
         gesture: (threshold.stability_frames, threshold.confidence_min)
         for gesture, threshold in profile.gesture_thresholds.items()
@@ -327,6 +329,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         feats = gaze_tracker.extract(frame.image)
         cursor = regressor.predict(feats.vector) if feats else None
         if cursor is not None and fusion.sm.state != State.IDLE:
+            # Dead-zone: prevent cursor from reaching extreme screen edges
+            cursor = dead_zone.clamp(cursor)
             cursor = fine_aim.update(cursor)
         else:
             fine_aim.reset()

@@ -1,4 +1,5 @@
 from .tracker import GazeDebug, GazeFeatures, GazeTracker
+from .dead_zones import DeadZoneClamper, DeadZoneConfig
 from .calibration import (
     CalibrationSample,
     GazeRegressor,
@@ -16,6 +17,8 @@ __all__ = [
     "GazeFeatures",
     "GazeDebug",
     "GazeTracker",
+    "DeadZoneClamper",
+    "DeadZoneConfig",
     "CalibrationSample",
     "GazeRegressor",
     "aggregate_gaze_features",

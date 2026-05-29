@@ -335,6 +335,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         # Gaze
         feats = gaze_tracker.extract(frame.image)
         cursor = regressor.predict(feats.vector) if feats else None
+        blink_detected = feats.blink if feats else False
         if cursor is not None and fusion.sm.state != State.IDLE:
             # Dead-zone: prevent cursor from reaching extreme screen edges
             cursor = dead_zone.clamp(cursor)
@@ -377,7 +378,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         panel.set_pause_progress(pause_progress)
 
         # Fusion
-        result = fusion.step(cursor, confirmed)
+        result = fusion.step(cursor, confirmed, blink=blink_detected)
 
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state)
         panel.set_state(result.state)

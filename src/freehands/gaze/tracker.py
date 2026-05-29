@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..mediapipe_assets import ensure_model
+from .blink_detector import BlinkDetector
 
 try:
     import mediapipe as mp
@@ -56,6 +57,7 @@ REQUIRED_EYE_LANDMARK = max([
 class GazeFeatures:
     vector: np.ndarray   # shape (N,) — model input
     confidence: float    # 0..1
+    blink: bool = False  # True if a blink was just detected
 
 
 @dataclass
@@ -65,6 +67,7 @@ class GazeDebug:
     landmark_count: int = 0
     iris_detected: bool = False
     pupil_detected: bool = False
+    blink_detected: bool = False
     confidence: float = 0.0
     message: str = "Inicializando"
     points: dict[str, tuple[float, float]] = field(default_factory=dict)
@@ -132,6 +135,7 @@ class GazeTracker:
     def __init__(self) -> None:
         self._backend = "solutions" if _mp_face_mesh is not None else "tasks"
         self.last_debug = GazeDebug(backend=self._backend)
+        self._blink_detector = BlinkDetector()
         if _mp_face_mesh is not None:
             self._mesh = _mp_face_mesh.FaceMesh(
                 max_num_faces=1,
@@ -229,8 +233,30 @@ class GazeTracker:
         eye_mid = (l_outer + r_outer) / 2.0
         head = (nose - eye_mid) / max(np.linalg.norm(l_outer - r_outer), 1e-6)
 
+        # ── Blink detection via Eye Aspect Ratio (EAR) ─────────────────────
+        # EAR = avg(vertical_eye_height) / horizontal_eye_width
+        # Landmarks for vertical eye: upper eyelid (159) and lower eyelid (145)
+        l_upper = pt(LEFT_EYE_VERTICAL[0])
+        l_lower = pt(LEFT_EYE_VERTICAL[1])
+        r_upper = pt(RIGHT_EYE_VERTICAL[0])
+        r_lower = pt(RIGHT_EYE_VERTICAL[1])
+        left_ear = ((l_upper[1] - l_lower[1]) / l_w) if l_w > 0 else 1.0
+        right_ear = ((r_upper[1] - r_lower[1]) / r_w) if r_w > 0 else 1.0
+        # Normalise: typical open-eye EAR is ~0.3–0.5, closed is ~0
+        max_expected_ear = 0.5
+        left_ear_norm = min(left_ear / max_expected_ear, 1.0) if max_expected_ear > 0 else 1.0
+        right_ear_norm = min(right_ear / max_expected_ear, 1.0) if max_expected_ear > 0 else 1.0
+        blink_detected = False
+        try:
+            blink_event = self._blink_detector.update(left_ear_norm, right_ear_norm)
+            blink_detected = blink_event is not None
+        except Exception:
+            # If blink detection fails, don't break the pipeline
+            pass
+
         feats = np.concatenate([l_rel, r_rel, head])  # 6-d
         debug.confidence = confidence
+        debug.blink_detected = blink_detected
         if debug.pupil_detected:
             debug.message = "Dark pupil detected"
         else:
@@ -250,7 +276,7 @@ class GazeTracker:
             debug.points["right_pupil"] = tuple(right_pupil)
         debug.vector = [round(float(v), 3) for v in feats]
         self.last_debug = debug
-        return GazeFeatures(vector=feats, confidence=confidence)
+        return GazeFeatures(vector=feats, confidence=confidence, blink=blink_detected)
 
     def close(self) -> None:
         self._mesh.close()

@@ -13,6 +13,9 @@ from .state_machine import State, StateMachine
 
 DIRECT_POINTER_ACTIONS = {"click", "right_click", "double_click", "undo"}
 
+# Blink is an instant click — no dwell needed.
+BLINK_CLICK_ACTION = "click"
+
 # Palm-scroll gestures map directly to scroll actions (no dwell needed).
 PALM_SCROLL_ACTIONS = {
     "palm_scroll_up": "scroll_up",
@@ -49,6 +52,7 @@ class FusionResult:
     state: State
     dwell_progress: float
     fired_action: str | None     # binding name (e.g. 'click', 'zoom_in', 'toggle_pause')
+    blink: bool = False           # True if a blink was detected this frame
 
 
 class GazeStabilityChecker:
@@ -82,32 +86,38 @@ class MultimodalFusion:
         self,
         cursor_xy: tuple[int, int] | None,
         confirmed_gesture: str | None,
+        blink: bool = False,
     ) -> FusionResult:
         bindings = self.profile.gesture_bindings
         candidate_action = action_for_gesture(bindings, confirmed_gesture)
+
+        # Blink: instant click, bypasses dwell and state machine entirely.
+        if blink:
+            self._last_action_at = time.monotonic()
+            return FusionResult(cursor_xy, self.sm.state, 0.0, BLINK_CLICK_ACTION, blink=True)
 
         # Palm-scroll gestures fire immediately (no dwell, no state machine).
         if confirmed_gesture and confirmed_gesture in PALM_SCROLL_ACTIONS:
             scroll_action = PALM_SCROLL_ACTIONS[confirmed_gesture]
             self._last_action_at = time.monotonic()
-            return FusionResult(cursor_xy, self.sm.state, 0.0, scroll_action)
+            return FusionResult(cursor_xy, self.sm.state, 0.0, scroll_action, blink=False)
 
         # Any gesture explicitly mapped to toggle_pause is honoured in any state.
         if confirmed_gesture and candidate_action == "toggle_pause":
             if self.sm.state == State.IDLE:
                 self.sm.activate()
-                return FusionResult(cursor_xy, self.sm.state, 0.0, "resume")
+                return FusionResult(cursor_xy, self.sm.state, 0.0, "resume", blink=False)
             self.sm.pause()
-            return FusionResult(cursor_xy, self.sm.state, 0.0, "toggle_pause")
+            return FusionResult(cursor_xy, self.sm.state, 0.0, "toggle_pause", blink=False)
 
         if self.sm.state == State.IDLE:
-            return FusionResult(cursor_xy, self.sm.state, 0.0, None)
+            return FusionResult(cursor_xy, self.sm.state, 0.0, None, blink=False)
 
         gaze_is_stable = self.gaze_stable.update(cursor_xy)
         self.sm.tick(gaze_is_stable)
 
         if not candidate_action or not confirmed_gesture or confirmed_gesture == "none":
-            return FusionResult(cursor_xy, self.sm.state, self.sm.dwell_progress, None)
+            return FusionResult(cursor_xy, self.sm.state, self.sm.dwell_progress, None, blink=False)
 
         # Direct pointer actions: every confirmed click-family gesture fires
         # immediately, with no cooldown and no contradiction throttling.
@@ -116,17 +126,18 @@ class MultimodalFusion:
             and candidate_action in DIRECT_POINTER_ACTIONS
         ):
             self._last_action_at = time.monotonic()
-            return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action)
+            return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action, blink=False)
 
         # Other actions (zoom, scroll, escape) still need dwell confirmation.
         if self.sm.state == State.CONFIRMING:
             self._last_action_at = time.monotonic()
             self.sm.trigger_cooldown()
-            return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action)
+            return FusionResult(cursor_xy, self.sm.state, 0.0, candidate_action, blink=False)
 
         return FusionResult(
             cursor_xy=cursor_xy,
             state=self.sm.state,
             dwell_progress=self.sm.dwell_progress,
             fired_action=None,
+            blink=False,
         )

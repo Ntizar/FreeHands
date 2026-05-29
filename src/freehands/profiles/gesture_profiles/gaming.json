@@ -1,0 +1,41 @@
+{
+  "description": "Perfil de gestos para gaming — alta sensibilidad, click rápido",
+  "gesture_bindings": {
+    "pointing_up": "click",
+    "middle_up": "right_click",
+    "two_fingers_up": "double_click",
+    "thumb_up": "reload",
+    "thumb_down": "switch_weapon",
+    "pinch_open": "zoom_in",
+    "pinch_close": "zoom_out",
+    "fist_pause": "pause_game",
+    "palm_scroll_up": "scroll_up",
+    "palm_scroll_down": "scroll_down"
+  },
+  "gesture_thresholds": {
+    "pointing_up": {
+      "stability_frames": 1,
+      "confidence_min": 0.40
+    },
+    "middle_up": {
+      "stability_frames": 1,
+      "confidence_min": 0.40
+    },
+    "two_fingers_up": {
+      "stability_frames": 1,
+      "confidence_min": 0.40
+    },
+    "thumb_up": {
+      "stability_frames": 2,
+      "confidence_min": 0.70
+    },
+    "pinch_open": {
+      "stability_frames": 3,
+      "confidence_min": 0.80
+    },
+    "pinch_close": {
+      "stability_frames": 3,
+      "confidence_min": 0.80
+    }
+  }
+}

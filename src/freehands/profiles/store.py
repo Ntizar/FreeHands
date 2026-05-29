@@ -17,6 +17,94 @@ from ..config import (
 )
 
 
+# ── External gesture profiles ──────────────────────────────────────────────
+GESTURE_PROFILES_DIR = PROFILES_DIR / "gesture_profiles"
+GESTURE_PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def gesture_profiles_dir() -> Path:
+    """Return the directory where external gesture profile JSONs live."""
+    return GESTURE_PROFILES_DIR
+
+
+def list_gesture_profiles() -> list[str]:
+    """Return sorted list of gesture profile names (without .json extension)."""
+    if not GESTURE_PROFILES_DIR.exists():
+        return []
+    return sorted(
+        p.stem for p in GESTURE_PROFILES_DIR.glob("*.json")
+        if p.is_file()
+    )
+
+
+class GestureProfileOverride(BaseModel):
+    """External gesture bindings/thresholds override."""
+    gesture_bindings: dict[str, str] = Field(default_factory=dict)
+    gesture_thresholds: dict[str, dict[str, float | int | bool]] = Field(default_factory=dict)
+
+
+def load_gesture_profile(name: str) -> GestureProfileOverride:
+    """Load an external gesture profile by name (without .json).
+
+    The profile is a JSON file in the gesture_profiles directory containing
+    optional ``gesture_bindings`` and ``gesture_thresholds`` overrides.
+    Missing keys simply mean "use defaults from the main profile".
+    """
+    path = GESTURE_PROFILES_DIR / f"{name}.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Gesture profile '{name}' not found. "
+            f"Create it at {GESTURE_PROFILES_DIR}/{name}.json"
+        )
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return GestureProfileOverride.model_validate(data)
+
+
+def merge_gesture_profile(profile: Profile, gesture_name: str) -> None:
+    """Apply an external gesture profile on top of a user profile (in-place).
+
+    External bindings override defaults; external thresholds merge field-by-field.
+    Repairs only touch gestures NOT explicitly set in the external profile.
+    """
+    ext = load_gesture_profile(gesture_name)
+    explicit_gestures = set(ext.gesture_bindings.keys())
+
+    # Merge bindings: external overrides defaults
+    profile.gesture_bindings.update(ext.gesture_bindings)
+
+    # Merge thresholds: external fields override per-gesture
+    VALID_THRESHOLD_KEYS = {"confidence_min", "stability_frames"}
+    for gesture, fields in ext.gesture_thresholds.items():
+        filtered: dict[str, int | float] = {}
+        for k, v in fields.items():
+            if k in VALID_THRESHOLD_KEYS:
+                filtered[k] = int(v) if k == "stability_frames" else float(v)  # type: ignore[assignment]
+        existing = profile.gesture_thresholds.get(gesture)
+        if existing is None:
+            profile.gesture_thresholds[gesture] = GestureThreshold(**filtered)  # type: ignore[arg-type]
+        else:
+            for key, value in filtered.items():
+                if key == "confidence_min":
+                    existing.confidence_min = value  # type: ignore[attr-defined]
+                elif key == "stability_frames":
+                    existing.stability_frames = value  # type: ignore[attr-defined]
+
+    # Re-run repairs after merge to maintain invariants
+    _repair_instant_mouse_thresholds(profile)
+    _repair_essential_bindings(
+        profile.gesture_bindings,
+        set(profile.gesture_thresholds),
+        explicit_gestures=explicit_gestures,
+    )
+    _dedupe_bindings(profile.gesture_bindings)
+    _repair_essential_bindings(
+        profile.gesture_bindings,
+        set(profile.gesture_thresholds),
+        explicit_gestures=explicit_gestures,
+    )
+
+
+# ── Original constants ─────────────────────────────────────────────────────
 GESTURE_BINDING_PRIORITY = [
     "pointing_up",
     "middle_up",
@@ -229,7 +317,12 @@ def _repair_instant_mouse_thresholds(profile: Profile) -> None:
             profile.gesture_thresholds[gesture] = GestureThreshold(stability_frames=1, confidence_min=0.50)
 
 
-def _repair_essential_bindings(bindings: dict[str, str], detectable_gestures: set[str]) -> None:
+def _repair_essential_bindings(
+    bindings: dict[str, str],
+    detectable_gestures: set[str],
+    explicit_gestures: set[str] | None = None,
+) -> None:
+    explicit_gestures = explicit_gestures or set()
     for gesture in LEGACY_UNDETECTABLE_GESTURES:
         bindings[gesture] = ""
 
@@ -248,7 +341,9 @@ def _repair_essential_bindings(bindings: dict[str, str], detectable_gestures: se
                 if bindings.get(side_gesture) == action:
                     bindings[side_gesture] = ""
         elif not _has_detectable_action(bindings, detectable_gestures, action):
-            bindings[generic_gesture] = action
+            # Only assign default if not explicitly overridden in external profile
+            if generic_gesture not in explicit_gestures:
+                bindings[generic_gesture] = action
 
 
 def load_profile(user_id: str) -> Profile:

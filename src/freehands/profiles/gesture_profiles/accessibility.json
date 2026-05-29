@@ -1,0 +1,37 @@
+{
+  "description": "Perfil de accesibilidad — máxima estabilidad, gestos amplios",
+  "gesture_bindings": {
+    "pointing_up": "click",
+    "middle_up": "right_click",
+    "two_fingers_up": "double_click",
+    "right_open_palm": "toggle_pause",
+    "palm_scroll_up": "scroll_up",
+    "palm_scroll_down": "scroll_down"
+  },
+  "gesture_thresholds": {
+    "pointing_up": {
+      "stability_frames": 3,
+      "confidence_min": 0.60
+    },
+    "middle_up": {
+      "stability_frames": 3,
+      "confidence_min": 0.60
+    },
+    "two_fingers_up": {
+      "stability_frames": 3,
+      "confidence_min": 0.60
+    },
+    "right_open_palm": {
+      "stability_frames": 30,
+      "confidence_min": 0.75
+    },
+    "pinch_open": {
+      "stability_frames": 2,
+      "confidence_min": 0.70
+    },
+    "pinch_close": {
+      "stability_frames": 2,
+      "confidence_min": 0.70
+    }
+  }
+}

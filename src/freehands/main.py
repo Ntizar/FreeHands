@@ -28,6 +28,7 @@ from .gestures import GestureStabilizer, HandTracker
 from .profiles import GestureThreshold, load_profile, save_profile
 from .ui.audio_feedback import AudioFeedback
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
+from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
 from .voice import VoiceListener
 
 
@@ -255,6 +256,22 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     last_pointer_move_at = 0.0
     last_pointer_xy: tuple[int, int] | None = None
 
+    # ── Radial menu ──────────────────────────────────────────────────────
+    radial_menu = RadialMenuWidget()
+    radial_menu_open_hold_frames = 0
+    radial_menu_open_gesture: str | None = None
+
+    def execute_radial_action(action_id: str, cursor_xy: tuple[int, int] | None) -> None:
+        """Execute an action from the radial menu."""
+        if cursor_xy is None:
+            return
+        overlay.flash_action(f"radial: {action_id}")
+        panel.set_last_action(f"radial: {action_id}")
+        dispatcher.execute(action_id, at_xy=cursor_xy)
+        audio_feedback.play_gesture_confirmation()
+
+    radial_menu.action_selected.connect(execute_radial_action)
+
     overlay = GazeOverlay()
     overlay.show()
 
@@ -330,7 +347,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy
+        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture
         frame = camera.read()
         if frame is None:
             return
@@ -389,6 +406,44 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         # Fusion
         result = fusion.step(cursor, confirmed, blink=blink_detected)
 
+        # ── Radial menu ──────────────────────────────────────────────────
+        # Detect open-palm hold to open the radial menu.
+        # The gesture must be one of the open-palm gestures mapped to
+        # toggle_pause (the same gesture used for pause hold), but we
+        # track a longer hold (MENU_OPEN_DURATION_MS frames) to distinguish
+        # menu-open from pause-toggle.
+        open_palm_gesture = confirmed if confirmed in {
+            "left_open_palm", "right_open_palm",
+            "left_palm_scroll_up", "left_palm_scroll_down",
+            "right_palm_scroll_up", "right_palm_scroll_down",
+        } else None
+
+        if radial_menu.visible:
+            # Menu is open — update dwell based on cursor position
+            radial_menu.update_dwell(result.cursor_xy)
+            # Dismiss on state change to IDLE
+            if result.state == State.IDLE:
+                radial_menu.close()
+        else:
+            # Menu is closed — track palm hold to open it
+            if open_palm_gesture is not None:
+                if radial_menu_open_gesture != open_palm_gesture:
+                    radial_menu_open_gesture = open_palm_gesture
+                    radial_menu_open_hold_frames = 0
+                radial_menu_open_hold_frames += 1
+                frames_needed = int(MENU_OPEN_DURATION_MS / (1000 / 30))
+                if radial_menu_open_hold_frames >= frames_needed:
+                    # Open the menu at the cursor position
+                    if result.cursor_xy is not None:
+                        radial_menu.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                    radial_menu_open_hold_frames = 0
+                    radial_menu_open_gesture = None
+            else:
+                # Gesture changed or lost — reset hold counter
+                if radial_menu_open_gesture is not None:
+                    radial_menu_open_gesture = None
+                    radial_menu_open_hold_frames = 0
+
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state,
                             snap_grid.active)
         panel.set_state(result.state)
@@ -397,6 +452,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             fine_aim.reset()
             snap_grid.reset()
             last_pointer_xy = None
+            # Also close radial menu on pause
+            if radial_menu.visible:
+                radial_menu.close()
 
         if profile.pointer_control_enabled and result.cursor_xy is not None and result.state != State.IDLE:
             now = time.monotonic()

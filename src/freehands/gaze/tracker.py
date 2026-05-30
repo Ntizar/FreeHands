@@ -13,6 +13,7 @@ import numpy as np
 
 from ..mediapipe_assets import ensure_model
 from .blink_detector import BlinkDetector, BlinkEvent
+from .head_pose import estimate_head_pose
 
 try:
     import mediapipe as mp
@@ -59,6 +60,7 @@ class GazeFeatures:
     confidence: float    # 0..1
     blink: bool = False  # True if a blink was just detected
     blink_event: BlinkEvent | None = None  # Full event with type classification
+    head_pose: "HeadPose | None" = None  # 6DoF head pose for coarse cursor movement
 
 
 @dataclass
@@ -74,6 +76,11 @@ class GazeDebug:
     message: str = "Inicializando"
     points: dict[str, tuple[float, float]] = field(default_factory=dict)
     vector: list[float] = field(default_factory=list)
+    # Head-pose debug fields
+    head_yaw: float = 0.0
+    head_pitch: float = 0.0
+    head_roll: float = 0.0
+    head_active: bool = False
 
 
 def _detect_dark_pupil(gray: np.ndarray, eye_points: list[np.ndarray]) -> np.ndarray | None:
@@ -281,7 +288,22 @@ class GazeTracker:
             debug.points["right_pupil"] = tuple(right_pupil)
         debug.vector = [round(float(v), 3) for v in feats]
         self.last_debug = debug
-        return GazeFeatures(vector=feats, confidence=confidence, blink=blink_detected, blink_event=blink_event)
+        # ── 6DoF head-pose estimation for coarse cursor displacement ──────
+        # Uses the same MediaPipe landmarks to estimate yaw/pitch/roll.
+        # The fusion layer can consume head_pose.coarse_active to apply
+        # large cursor sweeps when the user turns their head.
+        head_pose = estimate_head_pose(lm, w, h)
+        debug.head_yaw = round(float(head_pose.yaw), 3)
+        debug.head_pitch = round(float(head_pose.pitch), 3)
+        debug.head_roll = round(float(head_pose.roll), 3)
+        debug.head_active = head_pose.coarse_active
+        return GazeFeatures(
+            vector=feats,
+            confidence=confidence,
+            blink=blink_detected,
+            blink_event=blink_event,
+            head_pose=head_pose,
+        )
 
     def close(self) -> None:
         self._mesh.close()

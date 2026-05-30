@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..gaze.blink_detector import BlinkEventType
+from ..gaze.head_pose import head_pose_to_screen_delta
 from ..profiles import Profile
 from .state_machine import State, StateMachine
 
@@ -69,6 +70,9 @@ class FusionResult:
     blink_event: BlinkEventType | None = None  # Type of blink event (SINGLE, DOUBLE, PROLONGED)
     voice_action: str | None = None  # Voice command action (for AND fusion)
     gaze_confirmed: bool = False   # True when AND fusion requires gaze+voice
+    head_pose_active: bool = False # True when head-pose coarse movement is active
+    head_coarse_dx: float = 0.0    # Horizontal coarse displacement (screen fraction)
+    head_coarse_dy: float = 0.0    # Vertical coarse displacement (screen fraction)
 
 
 # Actions that benefit from gaze confirmation (AND fusion).
@@ -127,6 +131,9 @@ class MultimodalFusion:
         voice_action: str | None,
         blink: bool = False,
         blink_event: BlinkEventType | None = None,
+        head_pose: "HeadPose | None" = None,
+        screen_width: int = 1920,
+        screen_height: int = 1080,
     ) -> FusionResult:
         """Run the full fusion pipeline including voice+gaze AND fusion.
 
@@ -141,7 +148,50 @@ class MultimodalFusion:
         state in the overlay.
         """
         # ── 1. Process gesture + blink through the existing pipeline ──────
-        result = self.step(cursor_xy, confirmed_gesture, blink=blink, blink_event=blink_event)
+        result = self.step(
+            cursor_xy, confirmed_gesture,
+            blink=blink, blink_event=blink_event,
+            head_pose=head_pose,
+            screen_width=screen_width,
+            screen_height=screen_height,
+        )
+
+        # ── 1b. Apply head-pose coarse displacement to cursor ────────────
+        if head_pose is not None and head_pose.coarse_active:
+            dx, dy = head_pose_to_screen_delta(
+                head_pose, screen_width, screen_height
+            )
+            if result.cursor_xy is not None:
+                result = FusionResult(
+                    cursor_xy=(
+                        result.cursor_xy[0] + dx,
+                        result.cursor_xy[1] + dy,
+                    ),
+                    state=result.state,
+                    dwell_progress=result.dwell_progress,
+                    fired_action=result.fired_action,
+                    blink=result.blink,
+                    blink_event=result.blink_event,
+                    voice_action=result.voice_action,
+                    gaze_confirmed=result.gaze_confirmed,
+                    head_pose_active=True,
+                    head_coarse_dx=head_pose.coarse_dx,
+                    head_coarse_dy=head_pose.coarse_dy,
+                )
+            else:
+                result = FusionResult(
+                    cursor_xy=None,
+                    state=result.state,
+                    dwell_progress=result.dwell_progress,
+                    fired_action=result.fired_action,
+                    blink=result.blink,
+                    blink_event=result.blink_event,
+                    voice_action=result.voice_action,
+                    gaze_confirmed=result.gaze_confirmed,
+                    head_pose_active=True,
+                    head_coarse_dx=head_pose.coarse_dx,
+                    head_coarse_dy=head_pose.coarse_dy,
+                )
 
         # ── 2. Voice+gaze AND fusion (only for non-blink, non-gesture actions) ─
         # Blink events and gesture-mapped actions are already handled above.
@@ -218,7 +268,24 @@ class MultimodalFusion:
         confirmed_gesture: str | None,
         blink: bool = False,
         blink_event: BlinkEventType | None = None,
+        head_pose: "HeadPose | None" = None,
+        screen_width: int = 1920,
+        screen_height: int = 1080,
     ) -> FusionResult:
+        # ── Apply head-pose coarse displacement to cursor ─────────────────
+        # Head-pose moves the cursor by large amounts (screen fractions).
+        # This is applied before the state machine so dwell is measured on
+        # the displaced position — the user looks at a target by turning
+        # their head, and the fine gaze pointer handles precision.
+        if head_pose is not None and head_pose.coarse_active:
+            dx, dy = head_pose_to_screen_delta(
+                head_pose, screen_width, screen_height
+            )
+            if cursor_xy is not None:
+                cursor_xy = (
+                    cursor_xy[0] + dx,
+                    cursor_xy[1] + dy,
+                )
         bindings = self.profile.gesture_bindings
         candidate_action = action_for_gesture(bindings, confirmed_gesture)
 

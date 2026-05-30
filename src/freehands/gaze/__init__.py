@@ -14,6 +14,7 @@ from .calibration import (
     gaze_model_is_usable,
     gaze_model_weight_norm,
 )
+from .head_pose import HeadPose, estimate_head_pose, head_pose_to_screen_delta
 
 __all__ = [
     "GazeFeatures",
@@ -36,4 +37,7 @@ __all__ = [
     "gaze_model_is_current",
     "gaze_model_is_usable",
     "gaze_model_weight_norm",
+    "HeadPose",
+    "estimate_head_pose",
+    "head_pose_to_screen_delta",
 ]

@@ -371,6 +371,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         cursor = regressor.predict(feats.vector) if feats else None
         blink_detected = feats.blink if feats else False
         blink_event = feats.blink_event if feats else None
+        head_pose = feats.head_pose if feats else None
         if cursor is not None and fusion.sm.state != State.IDLE:
             # Dead-zone: prevent cursor from reaching extreme screen edges
             cursor = dead_zone.clamp(cursor)
@@ -411,8 +412,13 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         fine_aim_text = " fine" if fine_aim.active else ""
         cursor_text = f"{cursor[0]},{cursor[1]}{fine_aim_text}" if cursor else "-"
         hand_side = f" side={','.join(hand_obs.handedness)}" if hand_obs.handedness else ""
+        # Head-pose info for runtime display
+        if debug.head_active:
+            head_info = f" HP:y={debug.head_yaw:.2f} p={debug.head_pitch:.2f}"
+        else:
+            head_info = ""
         panel.set_runtime_info(
-            f"Gaze: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}",
+            f"Gaze: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}{head_info}",
             f"Hand: {hand_obs.gesture}{hand_side} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
         )
         panel.set_camera_preview(frame.image, hand_obs.hands, hand_obs.handedness, hand_obs.gesture)
@@ -461,6 +467,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             voice_action_for_fusion,
             blink=blink_detected,
             blink_event=blink_event.event_type if blink_event else None,
+            head_pose=head_pose,
+            screen_width=screen.width(),
+            screen_height=screen.height(),
         )
 
         # ── Channel priority: gesture vs voice conflict resolution ──────────
@@ -569,6 +578,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 label = f"{result.fired_action} (voz+mirada)"
             elif result.voice_action and not result.gaze_confirmed:
                 label = f"{result.fired_action} (esperando mirada)"
+            # Append head-pose indicator.
+            if result.head_pose_active:
+                label = f"{label} [cabeza]"
             overlay.flash_action(label)
             panel.set_last_action(label)
             if result.fired_action not in {"toggle_pause", "resume"}:

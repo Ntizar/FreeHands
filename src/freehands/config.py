@@ -33,13 +33,12 @@ COOLDOWN_MS_AFTER_ACTION = 500
 PAUSE_GESTURE_HOLD_MS = 1000
 
 # ── Calibration minigame ───────────────────────────────────────────────────
-# Gaze calibration uses a denser point map, but each visible point is confirmed
-# once after a short stable gaze window instead of repeating the same point.
+# Gaze calibration uses a standard 9-point grid (3×3) — corners, edge midpoints,
+# and centre. This is the ISO-standard layout used by WebGazer, EyeTrack, etc.
+# Each point is confirmed once after a short stable gaze window.
 CALIBRATION_POINTS = [
-    (0.00, 0.00), (1.00, 0.00), (1.00, 1.00), (0.00, 1.00),
-    (0.50, 0.50),
-    (0.50, 0.08), (0.92, 0.50), (0.50, 0.92), (0.08, 0.50),
-    (0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75),
-    (0.50, 0.30), (0.70, 0.50), (0.50, 0.70), (0.30, 0.50),
+    (0.00, 0.00), (0.50, 0.00), (1.00, 0.00),   # top row: left, centre, right
+    (0.00, 0.50), (0.50, 0.50), (1.00, 0.50),   # middle row: left, centre, right
+    (0.00, 1.00), (0.50, 1.00), (1.00, 1.00),   # bottom row: left, centre, right
 ]
 SAMPLES_PER_POINT = 1

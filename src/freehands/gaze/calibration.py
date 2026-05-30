@@ -15,7 +15,7 @@ from ..profiles.store import GazeModel
 
 
 LEGACY_GAZE_FEATURE_VERSION = 1
-CURRENT_GAZE_FEATURE_VERSION = 4
+CURRENT_GAZE_FEATURE_VERSION = 5   # polynomial features (degree 2) for non-linear gaze mapping
 EYE_SIGNAL_WEIGHT = 0.65
 HEAD_POSE_WEIGHT = 1.85
 MIN_OUTPUT_GAIN = 0.65
@@ -29,6 +29,28 @@ class CalibrationSample:
     target_xy: tuple[float, float]   # screen pixels
 
 
+def _expand_polynomial(features: np.ndarray, degree: int = 2) -> np.ndarray:
+    """Expand a feature vector with polynomial terms (degree 2).
+
+    For a 6-d input [a, b, c, d, e, f] produces:
+      [a, b, c, d, e, f,                  # linear
+       a², b², c², d², e², f²,             # squared
+       a·b, a·c, a·d, a·e, a·f,             # cross (upper triangle)
+       b·c, b·d, b·e, b·f,
+       c·d, c·e, c·f,
+       d·e, d·f,
+       e·f]                                 # 6 + 6 + 15 = 27 total
+    """
+    raw = np.asarray(features, dtype=float).reshape(-1)
+    n = raw.size
+    terms = list(raw)                          # linear
+    terms.extend(raw ** 2)                      # squared
+    for i in range(n):
+        for j in range(i + 1, n):
+            terms.append(raw[i] * raw[j])       # cross terms
+    return np.array(terms, dtype=float)
+
+
 def build_gaze_design_vector(
     features: np.ndarray,
     feature_version: int = CURRENT_GAZE_FEATURE_VERSION,
@@ -38,14 +60,28 @@ def build_gaze_design_vector(
         return raw
 
     left_x, left_y, right_x, right_y, head_x, head_y = raw
-    return np.array([
-        left_x * EYE_SIGNAL_WEIGHT,
-        left_y * EYE_SIGNAL_WEIGHT,
-        right_x * EYE_SIGNAL_WEIGHT,
-        right_y * EYE_SIGNAL_WEIGHT,
-        head_x * HEAD_POSE_WEIGHT,
-        head_y * HEAD_POSE_WEIGHT,
-    ], dtype=float)
+
+    if feature_version >= 5:
+        # Polynomial expansion (degree 2) for non-linear gaze mapping
+        linear = np.array([
+            left_x * EYE_SIGNAL_WEIGHT,
+            left_y * EYE_SIGNAL_WEIGHT,
+            right_x * EYE_SIGNAL_WEIGHT,
+            right_y * EYE_SIGNAL_WEIGHT,
+            head_x * HEAD_POSE_WEIGHT,
+            head_y * HEAD_POSE_WEIGHT,
+        ], dtype=float)
+        return _expand_polynomial(linear, degree=2)
+    else:
+        # Linear (v2–v4)
+        return np.array([
+            left_x * EYE_SIGNAL_WEIGHT,
+            left_y * EYE_SIGNAL_WEIGHT,
+            right_x * EYE_SIGNAL_WEIGHT,
+            right_y * EYE_SIGNAL_WEIGHT,
+            head_x * HEAD_POSE_WEIGHT,
+            head_y * HEAD_POSE_WEIGHT,
+        ], dtype=float)
 
 
 def aggregate_gaze_features(
@@ -107,6 +143,8 @@ def gaze_model_is_usable(model: GazeModel) -> bool:
 class GazeRegressor:
     """Predicts (x, y) pixels from a feature vector + Kalman-style smoothing."""
 
+    POLYNOMIAL_FEATURE_DIM = 27   # 6 linear + 6 squared + 15 cross
+
     def __init__(self, model: GazeModel, screen_size: tuple[int, int]) -> None:
         self._wx = np.array(model.weights_x) if model.weights_x else None
         self._wy = np.array(model.weights_y) if model.weights_y else None
@@ -125,8 +163,23 @@ class GazeRegressor:
     def _design_vector(self, features: np.ndarray) -> np.ndarray:
         raw = np.asarray(features, dtype=float).reshape(-1)
         design = build_gaze_design_vector(raw, self._feature_version)
-        if self._wx is not None and design.shape[0] != self._wx.shape[0] and raw.shape[0] == self._wx.shape[0]:
-            return raw
+        # Handle dimension mismatch: linear model with polynomial input or vice-versa
+        if self._wx is not None:
+            wx_dim = self._wx.shape[0]
+            if design.shape[0] != wx_dim and raw.shape[0] == 6:
+                # Input is linear 6-d but model expects expanded features
+                if wx_dim == self.POLYNOMIAL_FEATURE_DIM:
+                    # Expand linear to polynomial for backward compat
+                    linear = np.array([
+                        raw[0] * EYE_SIGNAL_WEIGHT,
+                        raw[1] * EYE_SIGNAL_WEIGHT,
+                        raw[2] * EYE_SIGNAL_WEIGHT,
+                        raw[3] * EYE_SIGNAL_WEIGHT,
+                        raw[4] * HEAD_POSE_WEIGHT,
+                        raw[5] * HEAD_POSE_WEIGHT,
+                    ], dtype=float)
+                    return _expand_polynomial(linear, degree=2)
+                # Otherwise: linear model with linear input — use as-is
         return design
 
     def predict(self, features: np.ndarray) -> tuple[int, int] | None:
@@ -148,7 +201,11 @@ class GazeRegressor:
 
 
 def fit_gaze_model(samples: list[CalibrationSample], alpha: float = 0.5) -> GazeModel:
-    """Train a ridge regressor and return a serialisable :class:`GazeModel`."""
+    """Train a polynomial ridge regressor and return a serialisable :class:`GazeModel`.
+
+    For polynomial features (v5+), the feature count jumps from 6 to 27, so we
+    use a higher regularisation strength to prevent over-fitting on small datasets.
+    """
     if len(samples) < 4:
         raise ValueError("Need at least 4 calibration samples")
     X = np.stack([
@@ -156,14 +213,16 @@ def fit_gaze_model(samples: list[CalibrationSample], alpha: float = 0.5) -> Gaze
         for s in samples
     ])
     y = np.array([s.target_xy for s in samples])
-    rx = Ridge(alpha=alpha).fit(X, y[:, 0])
-    ry = Ridge(alpha=alpha).fit(X, y[:, 1])
+    # Polynomial models (27 features) need stronger regularisation than linear (6 features)
+    poly_alpha = alpha * 10.0 if X.shape[1] > 10 else alpha
+    rx = Ridge(alpha=poly_alpha).fit(X, y[:, 0])
+    ry = Ridge(alpha=poly_alpha).fit(X, y[:, 1])
     pred_x = rx.predict(X)
     pred_y = ry.predict(X)
     gain_x, offset_x = calibrate_output_axis(pred_x, y[:, 0])
     gain_y, offset_y = calibrate_output_axis(pred_y, y[:, 1])
     return GazeModel(
-        type="ridge_regression",
+        type="polynomial_regression",
         feature_version=CURRENT_GAZE_FEATURE_VERSION,
         weights_x=[float(v) for v in (rx.coef_ * gain_x)],
         weights_y=[float(v) for v in (ry.coef_ * gain_y)],

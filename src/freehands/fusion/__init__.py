@@ -4,6 +4,7 @@ from .channel_priority import (
     voice_should_bypass_fusion,
 )
 from .fusion import (
+    AIR_SCROLL_ACTIONS,
     AND_FUSION_ACTIONS,
     FusionResult,
     MultimodalFusion,
@@ -12,6 +13,7 @@ from .fusion import (
 from .state_machine import State, StateMachine
 
 __all__ = [
+    "AIR_SCROLL_ACTIONS",
     "AND_FUSION_ACTIONS",
     "ChannelDecision",
     "MultimodalFusion",

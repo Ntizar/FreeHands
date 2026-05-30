@@ -124,13 +124,20 @@ GESTURE_BINDING_PRIORITY = [
     "pinch_open",
     "pinch_close",
     "fist_pause",
-    # Palm-scroll gestures
+    # Palm-scroll gestures (motion-based, auto-detected)
     "palm_scroll_up",
     "palm_scroll_down",
     "left_palm_scroll_up",
     "left_palm_scroll_down",
     "right_palm_scroll_up",
     "right_palm_scroll_down",
+    # Air-scroll / swipe gestures (motion-based, auto-detected)
+    "air_scroll_up",
+    "air_scroll_down",
+    "left_air_scroll_up",
+    "left_air_scroll_down",
+    "right_air_scroll_up",
+    "right_air_scroll_down",
 ]
 
 INSTANT_MOUSE_GESTURES = (
@@ -150,6 +157,13 @@ INSTANT_MOUSE_GESTURES = (
     "left_palm_scroll_down",
     "right_palm_scroll_up",
     "right_palm_scroll_down",
+    # Air-scroll / swipe gestures are inherently instant (motion-based)
+    "air_scroll_up",
+    "air_scroll_down",
+    "left_air_scroll_up",
+    "left_air_scroll_down",
+    "right_air_scroll_up",
+    "right_air_scroll_down",
 )
 
 CLICK_FAMILY_GESTURES = {
@@ -243,6 +257,14 @@ class Profile(BaseModel):
             "left_palm_scroll_down": "scroll_down",
             "right_palm_scroll_up": "scroll_up",
             "right_palm_scroll_down": "scroll_down",
+            # Air-scroll / swipe gestures (motion-based, auto-detected)
+            # Works with any hand pose — pointing, fist, open palm, etc.
+            "air_scroll_up": "scroll_up",
+            "air_scroll_down": "scroll_down",
+            "left_air_scroll_up": "scroll_up",
+            "left_air_scroll_down": "scroll_down",
+            "right_air_scroll_up": "scroll_up",
+            "right_air_scroll_down": "scroll_down",
         }
     )
     voice_enabled: bool = True

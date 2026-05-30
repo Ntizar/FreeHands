@@ -27,6 +27,18 @@ PALM_SCROLL_ACTIONS = {
     "right_palm_scroll_down": "scroll_down",
 }
 
+# Air-scroll / swipe gestures map directly to scroll actions (no dwell needed).
+# Unlike palm-scroll, air-scroll works with any hand pose (pointing, fist, etc.)
+# — the user simply sweeps their hand up or down in the camera frame.
+AIR_SCROLL_ACTIONS = {
+    "air_scroll_up": "scroll_up",
+    "air_scroll_down": "scroll_down",
+    "left_air_scroll_up": "scroll_up",
+    "left_air_scroll_down": "scroll_down",
+    "right_air_scroll_up": "scroll_up",
+    "right_air_scroll_down": "scroll_down",
+}
+
 SIDE_BINDING_FALLBACKS = {
     "left_pointing_up": "pointing_up",
     "right_pointing_up": "pointing_up",
@@ -65,6 +77,12 @@ class FusionResult:
 AND_FUSION_ACTIONS: frozenset[str] = frozenset({
     "click", "right_click", "double_click", "undo",
     "zoom_in", "zoom_out", "scroll_up", "scroll_down",
+})
+
+# Actions that are inherently instant (gesture-based, no dwell needed).
+# Includes both palm-scroll and air-scroll gestures.
+INSTANT_SCROLL_ACTIONS = frozenset({
+    "scroll_up", "scroll_down",
 })
 
 
@@ -227,6 +245,13 @@ class MultimodalFusion:
         # Palm-scroll gestures fire immediately (no dwell, no state machine).
         if confirmed_gesture and confirmed_gesture in PALM_SCROLL_ACTIONS:
             scroll_action = PALM_SCROLL_ACTIONS[confirmed_gesture]
+            self._last_action_at = time.monotonic()
+            return FusionResult(cursor_xy, self.sm.state, 0.0, scroll_action, blink=False)
+
+        # Air-scroll (swipe) gestures fire immediately (no dwell, no state machine).
+        # These work with any hand pose — pointing, fist, open palm, etc.
+        if confirmed_gesture and confirmed_gesture in AIR_SCROLL_ACTIONS:
+            scroll_action = AIR_SCROLL_ACTIONS[confirmed_gesture]
             self._last_action_at = time.monotonic()
             return FusionResult(cursor_xy, self.sm.state, 0.0, scroll_action, blink=False)
 

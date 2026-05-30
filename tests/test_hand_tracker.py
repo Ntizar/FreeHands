@@ -122,3 +122,123 @@ def test_rule_based_two_fingers_requires_clear_middle_extension() -> None:
 
     assert gesture == "right_two_fingers_up"
     assert confidence >= 0.80
+
+
+def test_air_scroll_detects_vertical_swipe() -> None:
+    """Air-scroll should detect a vertical swipe when hand centroid moves significantly."""
+    tracker = HandTracker.__new__(HandTracker)
+    tracker._prev_pinch_dist = None
+    tracker._air_centroid_x = {}
+    tracker._air_centroid_y = {}
+    tracker._air_scroll_cooldown = {}
+    # Simulate first frame — just set up tracking state
+    pts = np.zeros((21, 3), dtype=float)
+    pts[:, 0] = 0.5  # centered
+    pts[:, 1] = 0.3  # upper half
+    handedness = ["Right"]
+
+    # First frame: just records position
+    gesture = tracker._detect_air_scroll("pointing_up", [pts], handedness)
+    assert gesture == "pointing_up"  # no previous position to compare
+
+    # Second frame: hand moved down AND slightly right (delta_y > threshold, delta_x > min)
+    pts2 = pts.copy()
+    pts2[:, 1] += 0.05  # moved down 5% of screen height
+    pts2[:, 0] += 0.015  # small horizontal movement to qualify as swipe
+    gesture = tracker._detect_air_scroll("pointing_up", [pts2], handedness)
+    assert gesture == "right_air_scroll_up"  # down movement → scroll up
+
+
+def test_air_scroll_detects_upward_swipe() -> None:
+    """Air-scroll should detect upward swipe → scroll_down."""
+    tracker = HandTracker.__new__(HandTracker)
+    tracker._prev_pinch_dist = None
+    tracker._air_centroid_x = {}
+    tracker._air_centroid_y = {}
+    tracker._air_scroll_cooldown = {}
+    pts = np.zeros((21, 3), dtype=float)
+    pts[:, 0] = 0.5
+    pts[:, 1] = 0.7
+
+    # First frame
+    tracker._detect_air_scroll("pointing_up", [pts], ["Left"])
+
+    # Second frame: hand moved up AND slightly left (delta_y < 0, delta_x < 0)
+    pts2 = pts.copy()
+    pts2[:, 1] -= 0.05  # moved up
+    pts2[:, 0] -= 0.015  # small horizontal movement to qualify as swipe
+    gesture = tracker._detect_air_scroll("pointing_up", [pts2], ["Left"])
+    assert gesture == "left_air_scroll_down"
+
+
+def test_air_scroll_ignores_small_jitter() -> None:
+    """Air-scroll should NOT fire for small hand movements (below threshold)."""
+    tracker = HandTracker.__new__(HandTracker)
+    tracker._prev_pinch_dist = None
+    tracker._air_centroid_x = {}
+    tracker._air_centroid_y = {}
+    tracker._air_scroll_cooldown = {}
+    pts = np.zeros((21, 3), dtype=float)
+    pts[:, 0] = 0.5
+    pts[:, 1] = 0.5
+
+    # First frame
+    tracker._detect_air_scroll("pointing_up", [pts], ["Right"])
+
+    # Second frame: tiny movement (below AIR_SCROLL_THRESHOLD = 0.03)
+    pts2 = pts.copy()
+    pts2[:, 1] += 0.005  # only 0.5% movement
+    pts2[:, 0] += 0.001  # tiny horizontal too
+    gesture = tracker._detect_air_scroll("pointing_up", [pts2], ["Right"])
+    assert gesture == "pointing_up"  # should NOT become air_scroll
+
+
+def test_air_scroll_requires_horizontal_movement() -> None:
+    """Air-scroll should require both vertical AND horizontal movement."""
+    tracker = HandTracker.__new__(HandTracker)
+    tracker._prev_pinch_dist = None
+    tracker._air_centroid_x = {}
+    tracker._air_centroid_y = {}
+    tracker._air_scroll_cooldown = {}
+    pts = np.zeros((21, 3), dtype=float)
+    pts[:, 0] = 0.5
+    pts[:, 1] = 0.5
+
+    # First frame
+    tracker._detect_air_scroll("pointing_up", [pts], ["Right"])
+
+    # Second frame: only vertical movement, no horizontal
+    pts2 = pts.copy()
+    pts2[:, 1] += 0.05  # big vertical move
+    # x stays the same (no horizontal movement)
+    gesture = tracker._detect_air_scroll("pointing_up", [pts2], ["Right"])
+    assert gesture == "pointing_up"  # should NOT fire without horizontal component
+
+
+def test_air_scroll_cooldown_prevents_rapid_retrigger() -> None:
+    """Air-scroll should have a cooldown to prevent rapid-fire scroll events."""
+    tracker = HandTracker.__new__(HandTracker)
+    tracker._prev_pinch_dist = None
+    tracker._air_centroid_x = {}
+    tracker._air_centroid_y = {}
+    tracker._air_scroll_cooldown = {}
+    pts = np.zeros((21, 3), dtype=float)
+    pts[:, 0] = 0.5
+    pts[:, 1] = 0.5
+
+    # First frame: set position
+    tracker._detect_air_scroll("pointing_up", [pts], ["Right"])
+
+    # Second frame: trigger scroll (with horizontal component)
+    pts2 = pts.copy()
+    pts2[:, 1] += 0.05
+    pts2[:, 0] += 0.015
+    gesture = tracker._detect_air_scroll("pointing_up", [pts2], ["Right"])
+    assert gesture == "right_air_scroll_up"
+
+    # Third frame: same big movement but cooldown active
+    pts3 = pts2.copy()
+    pts3[:, 1] += 0.05
+    pts3[:, 0] += 0.015
+    gesture = tracker._detect_air_scroll("pointing_up", [pts3], ["Right"])
+    assert gesture == "pointing_up"  # cooldown active, should not fire

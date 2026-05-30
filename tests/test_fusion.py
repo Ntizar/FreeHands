@@ -241,6 +241,82 @@ def test_palm_scroll_gestures_in_profile_bindings() -> None:
     assert profile.gesture_bindings["right_palm_scroll_down"] == "scroll_down"
 
 
+def test_air_scroll_bypasses_dwell() -> None:
+    """Air-scroll should not require dwell confirmation, like palm-scroll."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    # Air-scroll fires immediately regardless of state
+    result = fusion.step((320, 240), "air_scroll_up")
+    assert result.fired_action == "scroll_up"
+    assert result.state is State.ACTIVE
+
+    result = fusion.step((320, 240), "air_scroll_down")
+    assert result.fired_action == "scroll_down"
+
+
+def test_all_air_scroll_gestures_map_correctly() -> None:
+    """All side-specific air-scroll gestures should map to correct scroll actions."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    expected = {
+        "air_scroll_up": "scroll_up",
+        "air_scroll_down": "scroll_down",
+        "left_air_scroll_up": "scroll_up",
+        "left_air_scroll_down": "scroll_down",
+        "right_air_scroll_up": "scroll_up",
+        "right_air_scroll_down": "scroll_down",
+    }
+    for gesture, expected_action in expected.items():
+        result = fusion.step((320, 240), gesture)
+        assert result.fired_action == expected_action, f"Gesture {gesture} should fire {expected_action}"
+
+
+def test_air_scroll_does_not_change_state() -> None:
+    """Air-scroll should not transition the state machine."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    for _ in range(5):
+        result = fusion.step((320, 240), "air_scroll_down")
+        assert result.state is State.ACTIVE
+
+
+def test_air_scroll_gestures_in_profile_bindings() -> None:
+    """Air-scroll gestures should be present in default profile bindings."""
+    profile = Profile(user_id="test")
+    assert profile.gesture_bindings["air_scroll_up"] == "scroll_up"
+    assert profile.gesture_bindings["air_scroll_down"] == "scroll_down"
+    assert profile.gesture_bindings["left_air_scroll_up"] == "scroll_up"
+    assert profile.gesture_bindings["right_air_scroll_down"] == "scroll_down"
+    assert profile.gesture_bindings["left_air_scroll_down"] == "scroll_down"
+    assert profile.gesture_bindings["right_air_scroll_up"] == "scroll_up"
+
+
+def test_air_scroll_in_instant_mouse_gestures() -> None:
+    """Air-scroll gestures should be in INSTANT_MOUSE_GESTURES for low latency."""
+    from freehands.profiles.store import INSTANT_MOUSE_GESTURES
+
+    for gesture in ("air_scroll_up", "air_scroll_down",
+                    "left_air_scroll_up", "left_air_scroll_down",
+                    "right_air_scroll_up", "right_air_scroll_down"):
+        assert gesture in INSTANT_MOUSE_GESTURES, f"{gesture} should be instant"
+
+
+def test_air_scroll_gestures_in_binding_priority() -> None:
+    """Air-scroll gestures should be in GESTURE_BINDING_PRIORITY."""
+    from freehands.profiles.store import GESTURE_BINDING_PRIORITY
+
+    for gesture in ("air_scroll_up", "air_scroll_down",
+                    "left_air_scroll_up", "left_air_scroll_down",
+                    "right_air_scroll_up", "right_air_scroll_down"):
+        assert gesture in GESTURE_BINDING_PRIORITY, f"{gesture} should be in priority list"
+
+
 def test_single_blink_triggers_click() -> None:
     """A single blink should fire click action."""
     profile = Profile(user_id="test")

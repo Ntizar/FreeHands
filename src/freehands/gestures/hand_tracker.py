@@ -50,6 +50,10 @@ GestureId = Literal[
     "palm_scroll_up", "palm_scroll_down",
     "left_palm_scroll_up", "left_palm_scroll_down",
     "right_palm_scroll_up", "right_palm_scroll_down",
+    # Air-scroll / swipe gestures (motion-based, works with any hand pose)
+    "air_scroll_up", "air_scroll_down",
+    "left_air_scroll_up", "left_air_scroll_down",
+    "right_air_scroll_up", "right_air_scroll_down",
 ]
 
 SIDE_AWARE_GESTURES = {"pointing_up", "middle_up", "two_fingers_up", "open_palm"}
@@ -58,6 +62,13 @@ SIDE_AWARE_GESTURES = {"pointing_up", "middle_up", "two_fingers_up", "open_palm"
 PALM_SCROLL_THRESHOLD = 0.015
 # How many frames a palm-scroll gesture is valid after last movement
 PALM_SCROLL_COOLDOWN_FRAMES = 3
+
+# Air-scroll / swipe: minimum vertical displacement to fire
+AIR_SCROLL_THRESHOLD = 0.03
+# How many frames an air-scroll gesture is valid after last movement
+AIR_SCROLL_COOLDOWN_FRAMES = 5
+# Minimum horizontal displacement to qualify as a swipe (not just hand jitter)
+AIR_SCROLL_MIN_HORIZONTAL = 0.01
 
 # Landmark indices
 WRIST = 0
@@ -106,6 +117,10 @@ class HandTracker:
         self._palm_y: dict[int, float] = {}
         self._palm_scroll_cooldown: dict[int, int] = {}
         self._palm_frame_counter = 0
+        # Air-scroll / swipe tracking: track hand centroid position for swipe detection
+        self._air_centroid_x: dict[int, float] = {}
+        self._air_centroid_y: dict[int, float] = {}
+        self._air_scroll_cooldown: dict[int, int] = {}
 
     def set_handedness_swapped(self, enabled: bool) -> None:
         self._swap_handedness = enabled
@@ -124,6 +139,8 @@ class HandTracker:
             gesture, conf = self._classify_multi(hands, handedness)
             # Enhance with palm-scroll detection
             gesture = self._detect_palm_scroll(gesture, hands, handedness)
+            # Enhance with air-scroll (swipe) detection — works with any hand pose
+            gesture = self._detect_air_scroll(gesture, hands, handedness)
             return HandObservation(gesture, conf, hands[0], hands, handedness)
 
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -332,6 +349,63 @@ class HandTracker:
                     return scroll_gesture
 
             self._palm_y[idx] = wrist_y
+
+        return gesture
+
+    # ── air-scroll / swipe detection ──────────────────────────────────────
+    # Detects deliberate vertical swipe motions with any hand pose.
+    # Unlike palm-scroll (which requires open palm), air-scroll works with
+    # pointing, fist, or any hand configuration — the user simply sweeps
+    # their hand up or down in the camera frame.
+    #
+    # The gesture returned overrides the static pose so the fusion layer
+    # sees air_scroll_up / air_scroll_down instead of the underlying pose.
+
+    def _detect_air_scroll(
+        self,
+        gesture: GestureId,
+        hands: list[np.ndarray],
+        handedness: list[str],
+    ) -> GestureId:
+        """Return an air-scroll gesture if the hand made a vertical swipe."""
+        side_prefix = ""
+
+        for idx, (pts, side) in enumerate(zip(hands, handedness)):
+            if side not in ("Left", "Right"):
+                continue
+
+            # Compute hand centroid (average of all landmarks)
+            centroid_x = float(np.mean(pts[:, 0]))
+            centroid_y = float(np.mean(pts[:, 1]))
+
+            # Track centroid position across frames
+            prev_x = self._air_centroid_x.get(idx)
+            prev_y = self._air_centroid_y.get(idx)
+
+            if prev_x is not None and prev_y is not None:
+                # Decrement cooldown
+                cd = self._air_scroll_cooldown.get(idx, 0)
+                if cd > 0:
+                    self._air_scroll_cooldown[idx] = cd - 1
+                    continue
+
+                delta_x = centroid_x - prev_x
+                delta_y = centroid_y - prev_y
+
+                # In image coords, Y increases downward.
+                # Hand moving UP (towards top of screen) → delta_y < 0 → scroll_down
+                # Hand moving DOWN (towards bottom of screen) → delta_y > 0 → scroll_up
+                vertical = abs(delta_y) >= AIR_SCROLL_THRESHOLD
+                horizontal = abs(delta_x) >= AIR_SCROLL_MIN_HORIZONTAL
+
+                if vertical and horizontal:
+                    direction = "up" if delta_y > 0 else "down"
+                    scroll_gesture = f"{side_prefix}{side.lower()}_air_scroll_{direction}"
+                    self._air_scroll_cooldown[idx] = AIR_SCROLL_COOLDOWN_FRAMES
+                    return scroll_gesture
+
+            self._air_centroid_x[idx] = centroid_x
+            self._air_centroid_y[idx] = centroid_y
 
         return gesture
 

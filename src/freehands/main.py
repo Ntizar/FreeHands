@@ -298,6 +298,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             voice_listener = VoiceListener(
                 language=profile.voice_language,
                 backend=profile.voice_asr_backend,
+                vosk_model_path=profile.voice_vosk_model_path or None,
                 wake_words=tuple(profile.voice_wake_words),
             ).start()
             print("Voice: enabled. Try: 'FreeHands click', 'Ntizar zoom in', 'pause', 'resume'.")

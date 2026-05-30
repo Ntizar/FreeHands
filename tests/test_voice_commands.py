@@ -108,3 +108,130 @@ def test_experimental_backend_keeps_faster_whisper_fallback_notice(monkeypatch) 
         ]
     finally:
         listener.stop()
+
+
+def test_vosk_backend_requires_vosk_package(monkeypatch) -> None:
+    """When Vosk is selected but not installed, an error is queued."""
+    import sys
+    import types
+
+    # Make sounddevice available but block vosk import
+    class FakeStream:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+        def start(self) -> None:
+            pass
+
+    fake_sd = types.SimpleNamespace(InputStream=FakeStream)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+    # Make vosk import fail by patching sys.modules
+    if "vosk" in sys.modules:
+        del sys.modules["vosk"]
+    # Block the actual vosk import
+    class BlockVoskFinder:
+        def find_module(self, name, path=None):
+            if name == "vosk":
+                return self
+            return None
+        def load_module(self, name):
+            raise ImportError("No module named 'vosk'")
+
+    finder = BlockVoskFinder()
+    sys.meta_path.insert(0, finder)
+    try:
+        listener = VoiceListener(backend="vosk")
+        listener.start()
+        try:
+            errors = listener.drain_errors()
+            assert len(errors) == 1
+            assert "vosk" in errors[0].lower()
+        finally:
+            listener.stop()
+    finally:
+        sys.meta_path.remove(finder)
+
+
+def test_vosk_listener_accepts_model_path(monkeypatch) -> None:
+    """The listener stores the vosk_model_path and passes it to Model()."""
+    import sys
+    import types
+
+    class FakeStream:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+        def start(self) -> None:
+            pass
+
+    fake_sd = types.SimpleNamespace(InputStream=FakeStream)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+
+    # Mock vosk imports — Model must be a callable class
+    models_created = []
+
+    class MockVoskModel:
+        def __init__(self, path=None):
+            models_created.append(path)
+
+    class MockRecognizer:
+        def __init__(self, model, sr):
+            pass
+        def SetWords(self, val=True):
+            pass
+
+    fake_vosk = types.SimpleNamespace(
+        KaldiRecognizer=MockRecognizer,
+        Model=MockVoskModel,
+        SetLogLevel=lambda x: None,
+    )
+    monkeypatch.setitem(sys.modules, "vosk", fake_vosk)
+
+    listener = VoiceListener(backend="vosk", vosk_model_path="/path/to/model")
+    listener.start()
+    try:
+        assert listener.vosk_model_path == "/path/to/model"
+        assert len(models_created) == 1
+        assert models_created[0] == "/path/to/model"
+    finally:
+        listener.stop()
+
+
+def test_vosk_backend_default_model_when_no_path(monkeypatch) -> None:
+    """When no model path is given, the listener uses the default Model()."""
+    import sys
+    import types
+
+    class FakeStream:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+        def start(self) -> None:
+            pass
+
+    fake_sd = types.SimpleNamespace(InputStream=FakeStream)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+
+    model_loaded = []
+
+    class TrackingModel:
+        def __init__(self, path=None):
+            model_loaded.append(path)
+
+    class MockRecognizer:
+        def __init__(self, model, sr):
+            pass
+        def SetWords(self, val=True):
+            pass
+
+    fake_vosk = types.SimpleNamespace(
+        KaldiRecognizer=MockRecognizer,
+        Model=TrackingModel,
+        SetLogLevel=lambda x: None,
+    )
+    monkeypatch.setitem(sys.modules, "vosk", fake_vosk)
+
+    listener = VoiceListener(backend="vosk")
+    listener.start()
+    try:
+        assert len(model_loaded) == 1
+        assert model_loaded[0] is None  # default Model() with no path
+    finally:
+        listener.stop()

@@ -250,6 +250,7 @@ class Profile(BaseModel):
     voice_asr_backend: str = "faster_whisper"
     voice_tts_backend: str = "none"
     voice_wake_words: list[str] = Field(default_factory=lambda: ["freehands", "free hands", "ntizar"])
+    voice_vosk_model_path: str = ""
     audio_feedback_enabled: bool = True
     magnification_enabled: bool = True
     magnification_factor: float = 2.0

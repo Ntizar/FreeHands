@@ -105,6 +105,7 @@ class VoiceListener:
         require_wake_word: bool = True,
         wake_words: tuple[str, ...] = WAKE_WORDS,
         backend: str = "faster_whisper",
+        vosk_model_path: str | None = None,
     ) -> None:
         self.language = language
         self.model_size = model_size
@@ -113,6 +114,7 @@ class VoiceListener:
         self.require_wake_word = require_wake_word
         self.wake_words = wake_words
         self.backend = backend
+        self.vosk_model_path = vosk_model_path
         self.transcripts: queue.Queue[str] = queue.Queue()
         self.commands: queue.Queue[VoiceCommand] = queue.Queue()
         self.errors: queue.Queue[str] = queue.Queue()
@@ -123,6 +125,9 @@ class VoiceListener:
 
     def start(self) -> "VoiceListener":
         import sounddevice as sd
+
+        if self.backend == "vosk":
+            return self._start_vosk()
 
         if self.backend != "faster_whisper":
             self.errors.put(
@@ -214,6 +219,94 @@ class VoiceListener:
                 if action:
                     confidence = getattr(info, "language_probability", 1.0) or 1.0
                     self.commands.put(VoiceCommand(text=text, action=action, confidence=float(confidence)))
+        except Exception as exc:  # keep the rest of the app alive
+            self.errors.put(str(exc))
+
+    def _start_vosk(self) -> "VoiceListener":
+        """Start the Vosk offline ASR backend."""
+        import sounddevice as sd
+
+        try:
+            from vosk import KaldiRecognizer, Model, SetLogLevel
+        except ImportError:
+            self.errors.put(
+                "Vosk backend selected but 'vosk' package is not installed. "
+                "Install it with: pip install vosk"
+            )
+            return self
+
+        if self.vosk_model_path:
+            try:
+                self._vosk_model = Model(self.vosk_model_path)
+            except Exception as exc:
+                self.errors.put(f"Vosk model load failed ({exc}); falling back to default.")
+                self._vosk_model = Model()
+        else:
+            try:
+                self._vosk_model = Model()
+            except Exception as exc:
+                self.errors.put(f"Vosk default model load failed ({exc}); falling back to faster_whisper.")
+                return self
+
+        SetLogLevel(-1)  # silence Vosk logs
+
+        self._stream = sd.InputStream(
+            samplerate=self.sample_rate,
+            channels=1,
+            dtype="float32",
+            callback=self._vosk_callback,
+            blocksize=int(self.sample_rate * 0.5),
+        )
+        self._stream.start()
+
+        self._vosk_recognizer = KaldiRecognizer(self._vosk_model, self.sample_rate)
+        self._vosk_recognizer.SetWords(True)
+
+        self._thread = threading.Thread(target=self._vosk_loop, name="FreeHandsVosk", daemon=True)
+        self._thread.start()
+        return self
+
+    def _vosk_callback(self, indata, _frames, _time, status) -> None:
+        if status:
+            self.errors.put(str(status))
+        try:
+            self._audio.put_nowait(np.asarray(indata[:, 0], dtype=np.float32).copy())
+        except queue.Full:
+            pass
+
+    def _vosk_loop(self) -> None:
+        """Main loop for the Vosk backend."""
+        try:
+            while not self._stop.is_set():
+                try:
+                    chunk = self._audio.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+
+                if float(np.sqrt(np.mean(chunk * chunk))) < 0.006:
+                    continue
+
+                if self._vosk_recognizer.AcceptWaveform(chunk.tobytes()):
+                    result = self._vosk_recognizer.Result()
+                    # Parse JSON result
+                    import json
+                    try:
+                        data = json.loads(result)
+                        text = data.get("text", "").strip()
+                    except (json.JSONDecodeError, KeyError):
+                        text = ""
+
+                    if not text:
+                        continue
+
+                    self.transcripts.put(text)
+                    action = parse_voice_command(
+                        text,
+                        require_wake_word=self.require_wake_word,
+                        wake_words=self.wake_words,
+                    )
+                    if action:
+                        self.commands.put(VoiceCommand(text=text, action=action, confidence=1.0))
         except Exception as exc:  # keep the rest of the app alive
             self.errors.put(str(exc))
 

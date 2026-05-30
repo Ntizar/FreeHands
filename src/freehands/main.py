@@ -26,6 +26,7 @@ from .gaze.dead_zones import DeadZoneClamper
 from .gaze.snap_to_grid import SnapToGrid
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import GestureThreshold, load_profile, save_profile
+from .plugins import PluginLoader
 from .ui.audio_feedback import AudioFeedback
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
@@ -312,6 +313,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     panel.set_handedness_swapped(profile.swap_handedness)
     panel.show()
 
+    # ── Voice ────────────────────────────────────────────────────────────
     if voice_enabled and profile.voice_enabled:
         try:
             voice_listener = VoiceListener(
@@ -324,6 +326,17 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         except Exception as exc:
             voice_listener = None
             print(f"Voice: disabled ({exc})")
+
+    # ── Plugin system ────────────────────────────────────────────────────
+    from pathlib import Path as _Path
+    _plugins_dir = getattr(profile, 'plugins_dir', None) or str(_Path(__file__).parent / "plugins")
+    plugin_loader = PluginLoader(_plugins_dir)
+    plugin_loader.discover_from_directory()
+    plugin_count = plugin_loader.load()
+    if plugin_count > 0:
+        print(f"[FreeHands] Loaded {plugin_count} plugin(s): {', '.join(p.name for p in plugin_loader.active_plugins)}")
+    else:
+        print("[FreeHands] No plugins loaded.")
 
     def handle_voice_action(action: str, cursor: tuple[int, int] | None) -> None:
         """Handle voice-only actions that bypass fusion (state transitions, system commands)."""
@@ -404,6 +417,28 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         )
         panel.set_camera_preview(frame.image, hand_obs.hands, hand_obs.handedness, hand_obs.gesture)
         panel.set_pause_progress(pause_progress)
+
+        # ── Plugin pipeline ──────────────────────────────────────────────
+        # Run all plugin hooks for this frame. Plugins can modify cursor,
+        # gesture, action, or add metadata for overlay rendering.
+        from .plugins.base import PluginContext
+        plugin_ctx = PluginContext(
+            frame=frame.image,
+            cursor=cursor,
+            gesture=confirmed,
+            action=action,
+            blink=blink_detected,
+            blink_event=blink_event.event_type.value if blink_event else None,
+            state=fusion.sm.state.name,
+        )
+        plugin_loader.run_all(plugin_ctx)
+        # Apply any plugin modifications back to local variables
+        if plugin_ctx.cursor is not None:
+            cursor = plugin_ctx.cursor
+        if plugin_ctx.gesture is not None and confirmed is not None:
+            confirmed = plugin_ctx.gesture
+        if plugin_ctx.action is not None:
+            action = plugin_ctx.action
 
         # ── Voice commands: drain before fusion so AND fusion can use them ─
         voice_actions_this_frame: list[str] = []
@@ -556,6 +591,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         hand_tracker.close()
         if voice_listener is not None:
             voice_listener.stop()
+        plugin_loader.unload()
 
     app.aboutToQuit.connect(cleanup)
 

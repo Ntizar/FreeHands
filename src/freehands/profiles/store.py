@@ -254,6 +254,7 @@ class Profile(BaseModel):
     audio_feedback_enabled: bool = True
     magnification_enabled: bool = True
     magnification_factor: float = 2.0
+    plugins_dir: str = ""
 
 
 # ── I/O ────────────────────────────────────────────────────────────────────

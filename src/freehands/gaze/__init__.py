@@ -1,4 +1,5 @@
 from .tracker import GazeDebug, GazeFeatures, GazeTracker
+from .blink_detector import BlinkDetector, BlinkEvent, BlinkEventType
 from .dead_zones import DeadZoneClamper, DeadZoneConfig
 from .calibration import (
     CalibrationSample,
@@ -17,6 +18,9 @@ __all__ = [
     "GazeFeatures",
     "GazeDebug",
     "GazeTracker",
+    "BlinkDetector",
+    "BlinkEvent",
+    "BlinkEventType",
     "DeadZoneClamper",
     "DeadZoneConfig",
     "CalibrationSample",

@@ -23,7 +23,7 @@ from .config import (
 from .fusion import MultimodalFusion, State, action_for_gesture, decide_channel_priority
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gaze.dead_zones import DeadZoneClamper
-from .gaze.snap_to_grid import SnapConfig, SnapToGrid
+from .gaze.snap_to_grid import SnapToGrid
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import GestureThreshold, load_profile, save_profile
 from .ui.audio_feedback import AudioFeedback
@@ -356,6 +356,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         feats = gaze_tracker.extract(frame.image)
         cursor = regressor.predict(feats.vector) if feats else None
         blink_detected = feats.blink if feats else False
+        blink_event = feats.blink_event if feats else None
         if cursor is not None and fusion.sm.state != State.IDLE:
             # Dead-zone: prevent cursor from reaching extreme screen edges
             cursor = dead_zone.clamp(cursor)
@@ -404,7 +405,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         panel.set_pause_progress(pause_progress)
 
         # Fusion
-        result = fusion.step(cursor, confirmed, blink=blink_detected)
+        result = fusion.step(cursor, confirmed, blink=blink_detected, blink_event=blink_event.event_type if blink_event else None)
 
         # ── Radial menu ──────────────────────────────────────────────────
         # Detect open-palm hold to open the radial menu.

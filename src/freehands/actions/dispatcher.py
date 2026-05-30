@@ -12,7 +12,8 @@ ACTIONS = {"click", "right_click", "double_click", "escape",
            "zoom_in", "zoom_out", "scroll_up", "scroll_down",
            "undo", "toggle_pause", "resume",
            "show_desktop", "screenshot",
-           "volume_up", "volume_down", "volume_mute"}
+           "volume_up", "volume_down", "volume_mute",
+           "drag_start", "drag_end"}
 
 
 class ActionDispatcher:
@@ -79,5 +80,12 @@ class ActionDispatcher:
             pyautogui.press("volumedown")
         elif action == "volume_mute":
             pyautogui.press("volumemute")
+        # ── Drag gestures (prolonged blink) ────────────────────────────────
+        elif action == "drag_start":
+            # Press and hold left mouse button to begin a drag operation.
+            pyautogui.mouseDown()
+        elif action == "drag_end":
+            # Release the left mouse button to end the drag operation.
+            pyautogui.mouseUp()
         # toggle_pause / resume are handled by the UI overlay, not pyautogui.
         return True

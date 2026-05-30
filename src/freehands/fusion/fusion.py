@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..gaze.blink_detector import BlinkEventType
 from ..profiles import Profile
 from .state_machine import State, StateMachine
 
@@ -53,6 +54,7 @@ class FusionResult:
     dwell_progress: float
     fired_action: str | None     # binding name (e.g. 'click', 'zoom_in', 'toggle_pause')
     blink: bool = False           # True if a blink was detected this frame
+    blink_event: BlinkEventType | None = None  # Type of blink event (SINGLE, DOUBLE, PROLONGED)
 
 
 class GazeStabilityChecker:
@@ -94,9 +96,25 @@ class MultimodalFusion:
         cursor_xy: tuple[int, int] | None,
         confirmed_gesture: str | None,
         blink: bool = False,
+        blink_event: BlinkEventType | None = None,
     ) -> FusionResult:
         bindings = self.profile.gesture_bindings
         candidate_action = action_for_gesture(bindings, confirmed_gesture)
+
+        # Blink events: type-specific actions, bypasses dwell and state machine.
+        if blink and blink_event is not None:
+            self._last_action_at = time.monotonic()
+
+            if blink_event == BlinkEventType.DOUBLE:
+                # Double blink → click (same as single, but distinct event type)
+                return FusionResult(cursor_xy, self.sm.state, 0.0, BLINK_CLICK_ACTION, blink=True, blink_event=blink_event)
+
+            if blink_event == BlinkEventType.PROLONGED:
+                # Prolonged close → drag start
+                return FusionResult(cursor_xy, self.sm.state, 0.0, "drag_start", blink=True, blink_event=blink_event)
+
+            # Single blink → click (existing behavior)
+            return FusionResult(cursor_xy, self.sm.state, 0.0, BLINK_CLICK_ACTION, blink=True, blink_event=blink_event)
 
         # Blink: instant click, bypasses dwell and state machine entirely.
         if blink:

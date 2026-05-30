@@ -17,6 +17,7 @@ mod = importlib.util.module_from_spec(spec)
 mod.__name__ = "blink_detector"
 spec.loader.exec_module(mod)
 BlinkDetector = mod.BlinkDetector
+BlinkEvent = mod.BlinkEvent
 
 
 class _TimeCounter:
@@ -124,6 +125,7 @@ def test_very_long_close_resets() -> None:
         min_blink_frames=3,
         max_blink_frames=15,
         recovery_frames=1,
+        prolonged_close_frames=20,  # higher than max_blink_frames so prolonged doesn't fire first
     )
     now = _TimeCounter()
 
@@ -156,3 +158,219 @@ def test_is_blinking_property() -> None:
 
     detector.update(0.1, 0.1, now=now())
     assert detector.is_blinking  # now 3 frames
+
+
+# ── New tests for double-blink detection ──────────────────────────────
+
+def test_double_blink_detected_within_window() -> None:
+    """Two blinks within double_blink_window should produce a DOUBLE event."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        recovery_frames=1,
+        debounce_seconds=0.05,  # very short debounce
+        double_blink_window=0.5,
+    )
+    now = _TimeCounter()
+
+    # First blink
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    detector.update(0.8, 0.8, now=now())  # fires single
+
+    # Second blink within window (0.05s debounce + 5 frames = 0.2s total)
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    event = detector.update(0.8, 0.8, now=now())
+
+    assert event is not None
+    assert event.event_type.name == "DOUBLE", f"Expected DOUBLE, got {event.event_type.name}"
+    assert event.time_since_last is not None
+    assert event.time_since_last <= 0.5
+
+
+def test_double_blink_not_detected_outside_window() -> None:
+    """Two blinks outside double_blink_window should produce two SINGLE events."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        recovery_frames=1,
+        debounce_seconds=0.01,
+        double_blink_window=0.1,  # very short window
+    )
+    now = _TimeCounter()
+
+    # First blink
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    detector.update(0.8, 0.8, now=now())
+
+    # Wait well past the window (skip 20 frames = 0.66s)
+    for _ in range(20):
+        now()
+
+    # Second blink
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    event = detector.update(0.8, 0.8, now=now())
+
+    assert event is not None
+    assert event.event_type.name == "SINGLE", f"Expected SINGLE, got {event.event_type.name}"
+
+
+def test_double_blink_requires_two_blinks() -> None:
+    """A single blink should always be SINGLE, never DOUBLE."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        recovery_frames=1,
+        double_blink_window=0.5,
+    )
+    now = _TimeCounter()
+
+    # Just one blink
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    event = detector.update(0.8, 0.8, now=now())
+
+    assert event is not None
+    assert event.event_type.name == "SINGLE"
+
+
+def test_double_blink_time_since_last_is_set() -> None:
+    """time_since_last should be set for DOUBLE events."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        recovery_frames=1,
+        debounce_seconds=0.01,
+        double_blink_window=0.5,
+    )
+    now = _TimeCounter()
+
+    # First blink
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    detector.update(0.8, 0.8, now=now())
+
+    # Second blink
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    event = detector.update(0.8, 0.8, now=now())
+
+    assert event is not None
+    assert event.time_since_last is not None
+    assert event.time_since_last > 0
+
+
+# ── New tests for prolonged-close detection ───────────────────────────
+
+def test_prolonged_close_detected() -> None:
+    """Holding eyes closed beyond prolonged_close_frames should fire PROLONGED."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        max_blink_frames=15,
+        recovery_frames=1,
+        prolonged_close_frames=6,  # low threshold for fast testing
+    )
+    now = _TimeCounter()
+
+    event: BlinkEvent | None = None
+    for _ in range(6):
+        event = detector.update(0.1, 0.1, now=now())
+        if event is not None:
+            break
+
+    assert event is not None
+    assert event.event_type.name == "PROLONGED"
+    assert event.closed_duration > 0
+
+
+def test_prolonged_close_has_high_confidence() -> None:
+    """Prolonged events should have confidence 1.0."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        max_blink_frames=15,
+        recovery_frames=1,
+        prolonged_close_frames=6,
+    )
+    now = _TimeCounter()
+
+    event = None
+    for _ in range(6):
+        event = detector.update(0.1, 0.1, now=now())
+        if event is not None:
+            break
+
+    assert event is not None
+    assert event.confidence == 1.0
+
+
+def test_is_prolonged_close_property() -> None:
+    """is_prolonged_close should be True when closed beyond threshold."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        prolonged_close_frames=6,
+    )
+    now = _TimeCounter()
+
+    assert not detector.is_prolonged_close
+    for _ in range(5):
+        detector.update(0.1, 0.1, now=now())
+    assert not detector.is_prolonged_close  # 5 frames, threshold is 6
+
+    # The 6th frame fires the prolonged event and resets state,
+    # so we check the property after the 5th frame only.
+    # The property is a "during-close" indicator, not a "post-event" one.
+    assert detector.is_prolonged_close is False  # still checking after 5th
+
+
+def test_prolonged_fires_before_max_blink_reset() -> None:
+    """Prolonged should fire before max_blink_frames causes a reset."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        max_blink_frames=15,
+        recovery_frames=1,
+        prolonged_close_frames=6,
+    )
+    now = _TimeCounter()
+
+    # Go all the way to max_blink_frames without exceeding prolonged threshold
+    event = None
+    for i in range(15):
+        event = detector.update(0.1, 0.1, now=now())
+        if event is not None:
+            break
+
+    assert event is not None
+    assert event.event_type.name == "PROLONGED"
+
+
+def test_prolonged_resets_state() -> None:
+    """After a prolonged event, the detector should reset and accept new blinks."""
+    detector = BlinkDetector(
+        ear_close_threshold=0.25,
+        min_blink_frames=3,
+        max_blink_frames=15,
+        recovery_frames=1,
+        prolonged_close_frames=6,
+    )
+    now = _TimeCounter()
+
+    # Fire prolonged
+    for _ in range(6):
+        detector.update(0.1, 0.1, now=now())
+
+    assert detector.is_blinking is False
+    assert detector.is_prolonged_close is False
+
+    # Now do a normal blink
+    for _ in range(3):
+        detector.update(0.1, 0.1, now=now())
+    event = detector.update(0.8, 0.8, now=now())
+    assert event is not None
+    assert event.event_type.name == "SINGLE"

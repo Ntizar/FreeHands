@@ -1,4 +1,5 @@
 from freehands.fusion import MultimodalFusion, State, action_for_gesture
+from freehands.gaze.blink_detector import BlinkEventType
 from freehands.profiles import Profile
 
 
@@ -238,3 +239,107 @@ def test_palm_scroll_gestures_in_profile_bindings() -> None:
     assert profile.gesture_bindings["palm_scroll_down"] == "scroll_down"
     assert profile.gesture_bindings["left_palm_scroll_up"] == "scroll_up"
     assert profile.gesture_bindings["right_palm_scroll_down"] == "scroll_down"
+
+
+def test_single_blink_triggers_click() -> None:
+    """A single blink should fire click action."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step(
+        (320, 240),
+        None,
+        blink=True,
+        blink_event=BlinkEventType.SINGLE,
+    )
+
+    assert result.fired_action == "click"
+    assert result.blink is True
+    assert result.blink_event is BlinkEventType.SINGLE
+
+
+def test_double_blink_triggers_click() -> None:
+    """A double blink should fire click action with DOUBLE type."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step(
+        (320, 240),
+        None,
+        blink=True,
+        blink_event=BlinkEventType.DOUBLE,
+    )
+
+    assert result.fired_action == "click"
+    assert result.blink is True
+    assert result.blink_event is BlinkEventType.DOUBLE
+
+
+def test_prolonged_blink_triggers_drag_start() -> None:
+    """A prolonged close should fire drag_start action."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step(
+        (320, 240),
+        None,
+        blink=True,
+        blink_event=BlinkEventType.PROLONGED,
+    )
+
+    assert result.fired_action == "drag_start"
+    assert result.blink is True
+    assert result.blink_event is BlinkEventType.PROLONGED
+
+
+def test_blink_bypasses_state_machine() -> None:
+    """Blink events should work even in IDLE state."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    # Not activating — stays IDLE
+
+    result = fusion.step(
+        (320, 240),
+        None,
+        blink=True,
+        blink_event=BlinkEventType.SINGLE,
+    )
+
+    assert result.fired_action == "click"
+
+
+def test_blink_without_event_type_uses_legacy_behavior() -> None:
+    """When blink=True but blink_event=None, should fall back to legacy click."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    result = fusion.step(
+        (320, 240),
+        None,
+        blink=True,
+        blink_event=None,
+    )
+
+    assert result.fired_action == "click"
+    assert result.blink is True
+    assert result.blink_event is None
+
+
+def test_blink_event_type_is_preserved_in_result() -> None:
+    """The blink_event type should be preserved in the FusionResult."""
+    profile = Profile(user_id="test")
+    fusion = MultimodalFusion(profile)
+    fusion.sm.activate()
+
+    for event_type in (BlinkEventType.SINGLE, BlinkEventType.DOUBLE, BlinkEventType.PROLONGED):
+        result = fusion.step(
+            (320, 240),
+            None,
+            blink=True,
+            blink_event=event_type,
+        )
+        assert result.blink_event is event_type

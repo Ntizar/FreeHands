@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..mediapipe_assets import ensure_model
-from .blink_detector import BlinkDetector
+from .blink_detector import BlinkDetector, BlinkEvent
 
 try:
     import mediapipe as mp
@@ -58,6 +58,7 @@ class GazeFeatures:
     vector: np.ndarray   # shape (N,) — model input
     confidence: float    # 0..1
     blink: bool = False  # True if a blink was just detected
+    blink_event: BlinkEvent | None = None  # Full event with type classification
 
 
 @dataclass
@@ -68,6 +69,7 @@ class GazeDebug:
     iris_detected: bool = False
     pupil_detected: bool = False
     blink_detected: bool = False
+    blink_type: str = ""
     confidence: float = 0.0
     message: str = "Inicializando"
     points: dict[str, tuple[float, float]] = field(default_factory=dict)
@@ -247,6 +249,7 @@ class GazeTracker:
         left_ear_norm = min(left_ear / max_expected_ear, 1.0) if max_expected_ear > 0 else 1.0
         right_ear_norm = min(right_ear / max_expected_ear, 1.0) if max_expected_ear > 0 else 1.0
         blink_detected = False
+        blink_event: BlinkEvent | None = None
         try:
             blink_event = self._blink_detector.update(left_ear_norm, right_ear_norm)
             blink_detected = blink_event is not None
@@ -257,6 +260,8 @@ class GazeTracker:
         feats = np.concatenate([l_rel, r_rel, head])  # 6-d
         debug.confidence = confidence
         debug.blink_detected = blink_detected
+        if blink_event is not None:
+            debug.blink_type = blink_event.event_type.name
         if debug.pupil_detected:
             debug.message = "Dark pupil detected"
         else:
@@ -276,7 +281,7 @@ class GazeTracker:
             debug.points["right_pupil"] = tuple(right_pupil)
         debug.vector = [round(float(v), 3) for v in feats]
         self.last_debug = debug
-        return GazeFeatures(vector=feats, confidence=confidence, blink=blink_detected)
+        return GazeFeatures(vector=feats, confidence=confidence, blink=blink_detected, blink_event=blink_event)
 
     def close(self) -> None:
         self._mesh.close()

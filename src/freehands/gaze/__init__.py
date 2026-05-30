@@ -1,6 +1,7 @@
 from .tracker import GazeDebug, GazeFeatures, GazeTracker
 from .blink_detector import BlinkDetector, BlinkEvent, BlinkEventType
 from .dead_zones import DeadZoneClamper, DeadZoneConfig
+from .kalman_filter import KalmanCursorFilter, KalmanParams
 from .calibration import (
     CalibrationSample,
     GazeRegressor,
@@ -23,6 +24,8 @@ __all__ = [
     "BlinkEventType",
     "DeadZoneClamper",
     "DeadZoneConfig",
+    "KalmanCursorFilter",
+    "KalmanParams",
     "CalibrationSample",
     "GazeRegressor",
     "aggregate_gaze_features",

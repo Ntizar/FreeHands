@@ -12,6 +12,7 @@ from sklearn.linear_model import Ridge
 
 from ..profiles import Profile
 from ..profiles.store import GazeModel
+from .kalman_filter import KalmanCursorFilter, KalmanParams
 
 
 LEGACY_GAZE_FEATURE_VERSION = 1
@@ -145,7 +146,13 @@ class GazeRegressor:
 
     POLYNOMIAL_FEATURE_DIM = 27   # 6 linear + 6 squared + 15 cross
 
-    def __init__(self, model: GazeModel, screen_size: tuple[int, int]) -> None:
+    def __init__(
+        self,
+        model: GazeModel,
+        screen_size: tuple[int, int],
+        *,
+        kalman_params: KalmanParams | None = None,
+    ) -> None:
         self._wx = np.array(model.weights_x) if model.weights_x else None
         self._wy = np.array(model.weights_y) if model.weights_y else None
         self._bx = model.bias_x
@@ -153,8 +160,7 @@ class GazeRegressor:
         self._offset = model.personal_offset
         self._feature_version = model.feature_version
         self._screen_w, self._screen_h = screen_size
-        self._smoothed: np.ndarray | None = None
-        self._alpha = 0.5  # exponential smoothing factor
+        self._kalman = KalmanCursorFilter(kalman_params)
 
     @property
     def trained(self) -> bool:
@@ -192,12 +198,9 @@ class GazeRegressor:
         y = float(design @ self._wy + self._by + self._offset["y"])
         x = max(0, min(self._screen_w - 1, x))
         y = max(0, min(self._screen_h - 1, y))
-        raw = np.array([x, y])
-        if self._smoothed is None:
-            self._smoothed = raw
-        else:
-            self._smoothed = self._alpha * raw + (1 - self._alpha) * self._smoothed
-        return int(self._smoothed[0]), int(self._smoothed[1])
+        # Kalman filter smoothing replaces the old EMA
+        smoothed = self._kalman.update((x, y))
+        return int(round(smoothed[0])), int(round(smoothed[1]))
 
 
 def fit_gaze_model(samples: list[CalibrationSample], alpha: float = 0.5) -> GazeModel:

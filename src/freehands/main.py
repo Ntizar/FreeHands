@@ -326,6 +326,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             print(f"Voice: disabled ({exc})")
 
     def handle_voice_action(action: str, cursor: tuple[int, int] | None) -> None:
+        """Handle voice-only actions that bypass fusion (state transitions, system commands)."""
         if action == "toggle_pause":
             fusion.sm.pause()
             overlay.flash_action("voice: pause")
@@ -404,8 +405,65 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         panel.set_camera_preview(frame.image, hand_obs.hands, hand_obs.handedness, hand_obs.gesture)
         panel.set_pause_progress(pause_progress)
 
-        # Fusion
-        result = fusion.step(cursor, confirmed, blink=blink_detected, blink_event=blink_event.event_type if blink_event else None)
+        # ── Voice commands: drain before fusion so AND fusion can use them ─
+        voice_actions_this_frame: list[str] = []
+        if voice_listener is not None:
+            for err in voice_listener.drain_errors():
+                print(f"[voice] {err}")
+            for cmd in voice_listener.drain_commands():
+                print(f"[voice] {cmd.text!r} -> {cmd.action}")
+                handle_voice_action(cmd.action, cursor)  # state/system commands
+                voice_actions_this_frame.append(cmd.action)
+
+        # ── Fusion: gesture + blink + AND voice ───────────────────────────
+        # Use step_and_voice which applies the multimodal AND fusion:
+        # pointer/gesture voice actions only fire when gaze is also present
+        # and stable — requiring the user to look at the target.
+        voice_action_for_fusion = voice_actions_this_frame[-1] if voice_actions_this_frame else None
+        result = fusion.step_and_voice(
+            cursor,
+            confirmed,
+            voice_action_for_fusion,
+            blink=blink_detected,
+            blink_event=blink_event.event_type if blink_event else None,
+        )
+
+        # ── Channel priority: gesture vs voice conflict resolution ──────────
+        # If the fusion step produced a gesture action and there are pending
+        # voice commands for pointer/gesture actions, resolve the conflict.
+        # AND fusion already handled voice actions that lack gaze confirmation.
+        if voice_listener is not None:
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text in {"toggle_pause", "resume",
+                                "show_desktop", "screenshot",
+                                "volume_up", "volume_down", "volume_mute"}:
+                    continue  # already handled by handle_voice_action
+                if result.fired_action and result.fired_action != cmd_text:
+                    # Both gesture and voice propose different actions — resolve.
+                    decision = decide_channel_priority(
+                        result.fired_action,
+                        cmd_text,
+                        gesture_confidence=0.9,
+                        voice_confidence=1.0,
+                    )
+                    if decision.action and decision.action != result.fired_action:
+                        # Voice wins — override gesture action.
+                        overlay.flash_action(f"voice: {decision.action} (priority)")
+                        panel.set_last_action(f"voice: {decision.action}")
+                        click_xy = result.cursor_xy if result.cursor_xy is not None else last_pointer_xy
+                        dispatcher.execute(decision.action, at_xy=click_xy)
+                        audio_feedback.play_voice_confirmation()
+                    # else gesture wins — already executed above
+                elif cmd_text and not result.fired_action:
+                    # No gesture action and AND fusion didn't fire (no gaze).
+                    # Voice action fills the gap only for non-pointer actions.
+                    from .fusion import AND_FUSION_ACTIONS
+                    if cmd_text not in AND_FUSION_ACTIONS:
+                        overlay.flash_action(f"voice: {cmd_text}")
+                        panel.set_last_action(f"voice: {cmd_text}")
+                        click_xy = result.cursor_xy if result.cursor_xy is not None else last_pointer_xy
+                        dispatcher.execute(cmd_text, at_xy=click_xy)
+                        audio_feedback.play_voice_confirmation()
 
         # ── Radial menu ──────────────────────────────────────────────────
         # Detect open-palm hold to open the radial menu.
@@ -470,8 +528,14 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 last_pointer_xy = result.cursor_xy
 
         if result.fired_action:
-            overlay.flash_action(result.fired_action)
-            panel.set_last_action(result.fired_action)
+            label = result.fired_action
+            # Append fusion indicator for AND fusion results.
+            if result.voice_action and result.gaze_confirmed:
+                label = f"{result.fired_action} (voz+mirada)"
+            elif result.voice_action and not result.gaze_confirmed:
+                label = f"{result.fired_action} (esperando mirada)"
+            overlay.flash_action(label)
+            panel.set_last_action(label)
             if result.fired_action not in {"toggle_pause", "resume"}:
                 # If gaze briefly dropped (cursor None) but we still have a
                 # recent OS pointer position, click there instead of skipping
@@ -479,53 +543,6 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 click_xy = result.cursor_xy if result.cursor_xy is not None else last_pointer_xy
                 dispatcher.execute(result.fired_action, at_xy=click_xy)
                 audio_feedback.play_gesture_confirmation()
-
-        if voice_listener is not None:
-            for err in voice_listener.drain_errors():
-                print(f"[voice] {err}")
-            for cmd in voice_listener.drain_commands():
-                print(f"[voice] {cmd.text!r} -> {cmd.action}")
-                handle_voice_action(cmd.action, result.cursor_xy)
-                audio_feedback.play_voice_confirmation()
-
-        # ── Channel priority: gesture vs voice conflict resolution ──────────
-        # If the fusion step produced a gesture action and there are pending
-        # voice commands, resolve the conflict using the priority rules.
-        # This block runs after gesture execution so that voice system
-        # commands (volume, screenshot) can override gesture actions.
-        if voice_listener is not None:
-            for cmd in voice_listener.drain_commands():
-                # Voice system commands and state transitions are already
-                # handled by handle_voice_action above. Only resolve conflicts
-                # for pointer/gesture actions where both channels propose
-                # different things.
-                if cmd.action in {"toggle_pause", "resume",
-                                  "show_desktop", "screenshot",
-                                  "volume_up", "volume_down", "volume_mute"}:
-                    continue  # already handled by handle_voice_action
-                if result.fired_action and result.fired_action != cmd.action:
-                    # Both gesture and voice propose different actions — resolve.
-                    decision = decide_channel_priority(
-                        result.fired_action,
-                        cmd.action,
-                        gesture_confidence=0.9,
-                        voice_confidence=cmd.confidence,
-                    )
-                    if decision.action and decision.action != result.fired_action:
-                        # Voice wins — override gesture action.
-                        overlay.flash_action(f"voice: {decision.action} (priority)")
-                        panel.set_last_action(f"voice: {decision.action}")
-                        click_xy = result.cursor_xy if result.cursor_xy is not None else last_pointer_xy
-                        dispatcher.execute(decision.action, at_xy=click_xy)
-                        audio_feedback.play_voice_confirmation()
-                    # else gesture wins — already executed above
-                elif cmd.action and not result.fired_action:
-                    # No gesture action — voice action fills the gap.
-                    overlay.flash_action(f"voice: {cmd.action}")
-                    panel.set_last_action(f"voice: {cmd.action}")
-                    click_xy = result.cursor_xy if result.cursor_xy is not None else last_pointer_xy
-                    dispatcher.execute(cmd.action, at_xy=click_xy)
-                    audio_feedback.play_voice_confirmation()
 
     timer = QtCore.QTimer()
     timer.timeout.connect(tick)

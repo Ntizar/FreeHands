@@ -55,6 +55,17 @@ class FusionResult:
     fired_action: str | None     # binding name (e.g. 'click', 'zoom_in', 'toggle_pause')
     blink: bool = False           # True if a blink was detected this frame
     blink_event: BlinkEventType | None = None  # Type of blink event (SINGLE, DOUBLE, PROLONGED)
+    voice_action: str | None = None  # Voice command action (for AND fusion)
+    gaze_confirmed: bool = False   # True when AND fusion requires gaze+voice
+
+
+# Actions that benefit from gaze confirmation (AND fusion).
+# When a voice command proposes one of these, it only fires if gaze
+# is also present and stable — requiring the user to look at the target.
+AND_FUSION_ACTIONS: frozenset[str] = frozenset({
+    "click", "right_click", "double_click", "undo",
+    "zoom_in", "zoom_out", "scroll_up", "scroll_down",
+})
 
 
 class GazeStabilityChecker:
@@ -90,6 +101,98 @@ class MultimodalFusion:
         self.sm = StateMachine(dwell_ms=profile.dwell_time_ms)
         self.gaze_stable = GazeStabilityChecker()
         self._last_action_at = 0.0
+
+    def step_and_voice(
+        self,
+        cursor_xy: tuple[int, int] | None,
+        confirmed_gesture: str | None,
+        voice_action: str | None,
+        blink: bool = False,
+        blink_event: BlinkEventType | None = None,
+    ) -> FusionResult:
+        """Run the full fusion pipeline including voice+gaze AND fusion.
+
+        This is the main entry point used by main.py.  It first processes
+        gesture + blink logic via ``step()``, then applies the multimodal
+        AND fusion: if a voice action targets a pointer/gesture action
+        (click, zoom, scroll, …) the action only fires when gaze is also
+        present and stable — requiring the user to look at the target.
+
+        Returns a ``FusionResult`` with ``voice_action`` and
+        ``gaze_confirmed`` populated so the caller can display the fusion
+        state in the overlay.
+        """
+        # ── 1. Process gesture + blink through the existing pipeline ──────
+        result = self.step(cursor_xy, confirmed_gesture, blink=blink, blink_event=blink_event)
+
+        # ── 2. Voice+gaze AND fusion (only for non-blink, non-gesture actions) ─
+        # Blink events and gesture-mapped actions are already handled above.
+        # Voice commands for pointer/gesture actions need gaze confirmation.
+        if voice_action and not result.fired_action:
+            if voice_action in AND_FUSION_ACTIONS:
+                # AND fusion: voice alone is not enough — need gaze too.
+                if cursor_xy is not None and self.sm.state != State.IDLE:
+                    # Gaze present and system active — check stability.
+                    gaze_ok = self.gaze_stable.peek()
+                    if gaze_ok:
+                        # Both voice AND gaze present → fire the action.
+                        self._last_action_at = time.monotonic()
+                        self.sm.trigger_cooldown()
+                        return FusionResult(
+                            cursor_xy=result.cursor_xy,
+                            state=self.sm.state,
+                            dwell_progress=0.0,
+                            fired_action=voice_action,
+                            blink=False,
+                            blink_event=None,
+                            voice_action=voice_action,
+                            gaze_confirmed=True,
+                        )
+                    else:
+                        # Gaze present but unstable → return partial result.
+                        return FusionResult(
+                            cursor_xy=result.cursor_xy,
+                            state=self.sm.state,
+                            dwell_progress=self.sm.dwell_progress,
+                            fired_action=None,
+                            blink=False,
+                            blink_event=None,
+                            voice_action=voice_action,
+                            gaze_confirmed=False,
+                        )
+                else:
+                    # No gaze or idle → voice alone cannot fire pointer actions.
+                    return FusionResult(
+                        cursor_xy=result.cursor_xy,
+                        state=self.sm.state,
+                        dwell_progress=self.sm.dwell_progress,
+                        fired_action=None,
+                        blink=False,
+                        blink_event=None,
+                        voice_action=voice_action,
+                        gaze_confirmed=False,
+                    )
+            else:
+                # Voice action is NOT in AND_FUSION_ACTIONS (e.g. drag_start).
+                # Fire it directly (no gaze confirmation needed).
+                self._last_action_at = time.monotonic()
+                return FusionResult(
+                    cursor_xy=result.cursor_xy,
+                    state=self.sm.state,
+                    dwell_progress=0.0,
+                    fired_action=voice_action,
+                    blink=False,
+                    blink_event=None,
+                    voice_action=voice_action,
+                    gaze_confirmed=True,
+                )
+
+        # ── 3. If gesture already fired an action, propagate voice info ───
+        if result.fired_action:
+            result.voice_action = voice_action
+            result.gaze_confirmed = True
+
+        return result
 
     def step(
         self,

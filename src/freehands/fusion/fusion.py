@@ -72,6 +72,13 @@ class GazeStabilityChecker:
         arr = np.array(self._buf)
         return float(arr.std(axis=0).max()) < self._max_std
 
+    def peek(self) -> bool:
+        """Return the last stability result without adding a new sample."""
+        if len(self._buf) < self._buf.maxlen:
+            return False
+        arr = np.array(self._buf)
+        return float(arr.std(axis=0).max()) < self._max_std
+
 
 class MultimodalFusion:
     """Owns the state machine, dwell logic and binding lookup."""

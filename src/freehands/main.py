@@ -23,6 +23,7 @@ from .config import (
 from .fusion import MultimodalFusion, State, action_for_gesture, decide_channel_priority
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gaze.dead_zones import DeadZoneClamper
+from .gaze.snap_to_grid import SnapConfig, SnapToGrid
 from .gestures import GestureStabilizer, HandTracker
 from .profiles import GestureThreshold, load_profile, save_profile
 from .ui.audio_feedback import AudioFeedback
@@ -234,6 +235,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     hand_tracker.set_handedness_swapped(profile.swap_handedness)
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))
     dead_zone = DeadZoneClamper(screen.width(), screen.height())
+    snap_grid = SnapToGrid()
     gesture_thresholds = {
         gesture: (threshold.stability_frames, threshold.confidence_min)
         for gesture, threshold in profile.gesture_thresholds.items()
@@ -341,6 +343,12 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             # Dead-zone: prevent cursor from reaching extreme screen edges
             cursor = dead_zone.clamp(cursor)
             cursor = fine_aim.update(cursor)
+            # Snap-to-grid: after ~300ms of stable gaze, snap to nearest
+            # grid-cell centre to make targeting UI elements easier.
+            # Reuse the stability check from fusion's gaze checker (peek,
+            # not update — fusion.step() will consume the sample itself).
+            gaze_stable = fusion.gaze_stable.peek()
+            cursor = snap_grid.update(cursor, gaze_stable)
         else:
             fine_aim.reset()
 
@@ -381,11 +389,13 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         # Fusion
         result = fusion.step(cursor, confirmed, blink=blink_detected)
 
-        overlay.update_view(result.cursor_xy, result.dwell_progress, result.state)
+        overlay.update_view(result.cursor_xy, result.dwell_progress, result.state,
+                            snap_grid.active)
         panel.set_state(result.state)
 
         if result.state == State.IDLE:
             fine_aim.reset()
+            snap_grid.reset()
             last_pointer_xy = None
 
         if profile.pointer_control_enabled and result.cursor_xy is not None and result.state != State.IDLE:

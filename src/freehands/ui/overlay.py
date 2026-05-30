@@ -69,6 +69,7 @@ class GazeOverlay(QtWidgets.QWidget):
         self._dwell_progress = 0.0
         self._state = State.IDLE
         self._action_flash: str | None = None
+        self._snap_active = False
 
         self._flash_timer = QtCore.QTimer(self)
         self._flash_timer.setSingleShot(True)
@@ -76,10 +77,12 @@ class GazeOverlay(QtWidgets.QWidget):
 
     # ── public API ────────────────────────────────────────────────────────
     def update_view(self, cursor: tuple[int, int] | None,
-                    dwell_progress: float, state: State) -> None:
+                    dwell_progress: float, state: State,
+                    snap_active: bool = False) -> None:
         self._cursor = cursor
         self._dwell_progress = dwell_progress
         self._state = state
+        self._snap_active = snap_active
         self.update()
 
     def flash_action(self, action: str) -> None:
@@ -121,6 +124,15 @@ class GazeOverlay(QtWidgets.QWidget):
             p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
             rect = QtCore.QRect(x - 22, y - 22, 44, 44)
             p.drawArc(rect, 90 * 16, int(-360 * 16 * self._dwell_progress))
+
+        # Snap-to-grid indicator: green dashed ring when snap is active.
+        if self._snap_active:
+            snap_pen = QtGui.QPen(QtGui.QColor(PALETTE.success), 2)
+            snap_pen.setDashPattern([4, 4])
+            p.setPen(snap_pen)
+            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            snap_rect = QtCore.QRect(x - 16, y - 16, 32, 32)
+            p.drawEllipse(snap_rect)
 
         if self._action_flash:
             p.setPen(QtGui.QColor(PALETTE.text_primary))

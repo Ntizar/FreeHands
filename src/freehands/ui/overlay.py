@@ -51,7 +51,16 @@ ACTION_OPTIONS = {
 
 
 class GazeOverlay(QtWidgets.QWidget):
-    """Frameless, click-through overlay drawn over the entire primary screen."""
+    """Frameless, click-through overlay drawn over the entire primary screen.
+
+    Features:
+    - Subtle radial gradient around cursor for depth perception
+    - Faint desktop-wide tint for visual grounding
+    - Multi-monitor aware (resizes on screen geometry changes)
+    - Dwell ring, state badge, snap indicator, action flash
+    """
+
+    screen_geometry_changed = QtCore.pyqtSignal(QtCore.QRect)
 
     def __init__(self) -> None:
         super().__init__(
@@ -62,6 +71,8 @@ class GazeOverlay(QtWidgets.QWidget):
         )
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setWindowOpacity(0.92)
         screen = QtWidgets.QApplication.primaryScreen().geometry()
         self.setGeometry(screen)
 
@@ -74,6 +85,18 @@ class GazeOverlay(QtWidgets.QWidget):
         self._flash_timer = QtCore.QTimer(self)
         self._flash_timer.setSingleShot(True)
         self._flash_timer.timeout.connect(self._clear_flash)
+
+        # Track screen geometry changes (e.g. monitor hotplug)
+        screen_changed_conn = (
+            QtWidgets.QApplication.instance().screenChanged
+        )
+        if screen_changed_conn is not None:
+            screen_changed_conn.connect(self._on_screen_changed)
+
+    def _on_screen_changed(self, screen: QtWidgets.QScreen) -> None:
+        """Reposition overlay when a new screen is detected."""
+        self.setGeometry(screen.geometry())
+        self.update()
 
     # ── public API ────────────────────────────────────────────────────────
     def update_view(self, cursor: tuple[int, int] | None,
@@ -105,21 +128,39 @@ class GazeOverlay(QtWidgets.QWidget):
             return
         x, y = self._cursor
 
-        # Ntizar liquid-glass cursor
-        outer = QtGui.QColor(PALETTE.blue)
-        outer.setAlpha(60)
-        p.setBrush(outer)
+        # Subtle radial gradient halo around cursor for depth perception.
+        # This helps the user track where gaze is landing on any background.
+        halo = QtGui.QRadialGradient(x, y, 32)
+        halo.setColorAt(0, QtGui.QColor(PALETTE.blue).rgba64())
+        halo.setColorAt(0.5, QtGui.QColor(PALETTE.blue).rgba64())
+        halo.setColorAt(1, QtGui.QColor(0, 0, 0, 0).rgba64())
+        halo_color = QtGui.QColor(halo.color(0.3))
+        halo_color.setAlpha(25)
+        halo.setColorAt(0.3, halo_color)
+        p.setBrush(QtGui.QBrush(halo))
         p.setPen(QtCore.Qt.PenStyle.NoPen)
-        p.drawEllipse(QtCore.QPoint(x, y), 28, 28)
+        p.drawEllipse(QtCore.QRect(x - 32, y - 32, 64, 64))
 
+        # Thin border ring for cursor position reference.
+        ring_pen = QtGui.QPen(
+            QtGui.QColor(PALETTE.blue).lighter(115), 2
+        )
+        ring_pen.setCosmetic(True)
+        p.setPen(ring_pen)
+        p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        p.drawEllipse(QtCore.QPoint(x, y), 14, 14)
+
+        # Ntizar liquid-glass cursor (inner dot)
         inner = QtGui.QColor(PALETTE.blue)
         inner.setAlpha(220)
         p.setBrush(inner)
-        p.drawEllipse(QtCore.QPoint(x, y), 6, 6)
+        p.setPen(QtCore.Qt.PenStyle.NoPen)
+        p.drawEllipse(QtCore.QPoint(x, y), 5, 5)
 
         # Dwell ring (orange fill clockwise)
         if self._state in (State.ACTIVE, State.CONFIRMING) and self._dwell_progress > 0:
             pen = QtGui.QPen(QtGui.QColor(PALETTE.orange), 4)
+            pen.setCosmetic(True)
             p.setPen(pen)
             p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
             rect = QtCore.QRect(x - 22, y - 22, 44, 44)
@@ -129,6 +170,7 @@ class GazeOverlay(QtWidgets.QWidget):
         if self._snap_active:
             snap_pen = QtGui.QPen(QtGui.QColor(PALETTE.success), 2)
             snap_pen.setDashPattern([4, 4])
+            snap_pen.setCosmetic(True)
             p.setPen(snap_pen)
             p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
             snap_rect = QtCore.QRect(x - 16, y - 16, 32, 32)

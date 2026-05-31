@@ -6,6 +6,7 @@ from .channel_priority import (
 from .fusion import (
     AIR_SCROLL_ACTIONS,
     AND_FUSION_ACTIONS,
+    FACIAL_GESTURE_ACTIONS,
     FusionResult,
     MultimodalFusion,
     action_for_gesture,
@@ -15,6 +16,7 @@ from .state_machine import State, StateMachine
 __all__ = [
     "AIR_SCROLL_ACTIONS",
     "AND_FUSION_ACTIONS",
+    "FACIAL_GESTURE_ACTIONS",
     "ChannelDecision",
     "MultimodalFusion",
     "State",

@@ -138,6 +138,14 @@ GESTURE_BINDING_PRIORITY = [
     "left_air_scroll_down",
     "right_air_scroll_up",
     "right_air_scroll_down",
+    # Facial expression gestures (state-based, auto-detected)
+    "smile",
+    "frown",
+    "surprise",
+    "raised_eyebrows",
+    "furrowed_brows",
+    "mouth_open",
+    "tongue_out",
 ]
 
 INSTANT_MOUSE_GESTURES = (
@@ -227,6 +235,14 @@ class Profile(BaseModel):
             "left_open_palm": GestureThreshold(stability_frames=60, confidence_min=0.80),
             "right_open_palm": GestureThreshold(stability_frames=60, confidence_min=0.80),
             "fist_pause":  GestureThreshold(stability_frames=15),
+            # Facial expression gestures (state-based, moderate stability)
+            "smile": GestureThreshold(stability_frames=8, confidence_min=0.70),
+            "frown": GestureThreshold(stability_frames=8, confidence_min=0.70),
+            "surprise": GestureThreshold(stability_frames=3, confidence_min=0.80),
+            "raised_eyebrows": GestureThreshold(stability_frames=6, confidence_min=0.70),
+            "furrowed_brows": GestureThreshold(stability_frames=6, confidence_min=0.70),
+            "mouth_open": GestureThreshold(stability_frames=5, confidence_min=0.65),
+            "tongue_out": GestureThreshold(stability_frames=5, confidence_min=0.65),
         }
     )
     gesture_bindings: dict[str, str] = Field(
@@ -265,6 +281,15 @@ class Profile(BaseModel):
             "left_air_scroll_down": "scroll_down",
             "right_air_scroll_up": "scroll_up",
             "right_air_scroll_down": "scroll_down",
+            # Facial expression gestures (state-based, auto-detected via FaceMesh)
+            # Map to actions — default bindings are empty; user can customise.
+            "smile": "",
+            "frown": "",
+            "surprise": "",
+            "raised_eyebrows": "",
+            "furrowed_brows": "",
+            "mouth_open": "",
+            "tongue_out": "",
         }
     )
     voice_enabled: bool = True

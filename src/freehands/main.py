@@ -25,6 +25,7 @@ from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gaze.dead_zones import DeadZoneClamper
 from .gaze.snap_to_grid import SnapToGrid
 from .gestures import GestureStabilizer, HandTracker
+from .gestures.face_tracker import FaceTracker, FacialObservation
 from .profiles import GestureThreshold, load_profile, save_profile
 from .plugins import PluginLoader
 from .ui.audio_feedback import AudioFeedback
@@ -235,6 +236,13 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     gaze_tracker = GazeTracker()
     hand_tracker = HandTracker()
     hand_tracker.set_handedness_swapped(profile.swap_handedness)
+    face_tracker = FaceTracker()
+    face_stabilizer = GestureStabilizer(
+        required_frames=DEFAULT_STABILITY_FRAMES,
+        confidence_min=DEFAULT_GESTURE_CONFIDENCE,
+        per_gesture=gesture_thresholds,
+        rearm_frames=1,
+    )
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))
     dead_zone = DeadZoneClamper(screen.width(), screen.height())
     snap_grid = SnapToGrid()
@@ -412,6 +420,28 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         fine_aim_text = " fine" if fine_aim.active else ""
         cursor_text = f"{cursor[0]},{cursor[1]}{fine_aim_text}" if cursor else "-"
         hand_side = f" side={','.join(hand_obs.handedness)}" if hand_obs.handedness else ""
+
+        # ── Face (facial expressions) ────────────────────────────────────
+        face_obs = face_tracker.detect(frame.image)
+        face_gesture = face_obs.primary_gesture if face_obs.primary_gesture != "none" else None
+        face_confirmed = face_stabilizer.update(face_gesture, face_obs.confidence) if face_gesture else None
+        face_action = action_for_gesture(profile.gesture_bindings, face_confirmed) or None
+        face_labels = []
+        if face_obs.smile:
+            face_labels.append("sonrisa")
+        if face_obs.frown:
+            face_labels.append("ceño")
+        if face_obs.surprise:
+            face_labels.append("sorpresa")
+        if face_obs.raised_eyebrows:
+            face_labels.append("cejas arriba")
+        if face_obs.furrowed_brows:
+            face_labels.append("cejas fruncidas")
+        if face_obs.mouth_open:
+            face_labels.append("boca abierta")
+        if face_obs.tongue_out:
+            face_labels.append("lengua fuera")
+        face_text = ", ".join(face_labels) if face_labels else "—"
         # Head-pose info for runtime display
         if debug.head_active:
             head_info = f" HP:y={debug.head_yaw:.2f} p={debug.head_pitch:.2f}"
@@ -421,6 +451,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             f"Gaze: {gaze_source} conf={debug.confidence:.2f} cursor={cursor_text}{head_info}",
             f"Hand: {hand_obs.gesture}{hand_side} {hand_obs.confidence:.2f}" + (f" -> {action}" if action else ""),
         )
+        panel.set_face_info(face_text)
         panel.set_camera_preview(frame.image, hand_obs.hands, hand_obs.handedness, hand_obs.gesture)
         panel.set_pause_progress(pause_progress)
 
@@ -455,6 +486,17 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 print(f"[voice] {cmd.text!r} -> {cmd.action}")
                 handle_voice_action(cmd.action, cursor)  # state/system commands
                 voice_actions_this_frame.append(cmd.action)
+
+        # ── Facial expressions: instant-action, no dwell, no state machine ─
+        # Face gestures fire immediately when a bound facial expression is
+        # detected (e.g. smile → custom action, surprise → custom action).
+        # This runs before fusion so facial actions take priority over
+        # hand/gaze dwell-based actions.
+        if face_confirmed and face_action:
+            overlay.flash_action(f"rostro: {face_action}")
+            panel.set_last_action(f"rostro: {face_action}")
+            dispatcher.execute(face_action, at_xy=cursor)
+            audio_feedback.play_gesture_confirmation()
 
         # ── Fusion: gesture + blink + AND voice ───────────────────────────
         # Use step_and_voice which applies the multimodal AND fusion:
@@ -601,6 +643,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         camera.stop()
         gaze_tracker.close()
         hand_tracker.close()
+        face_tracker.close()
         if voice_listener is not None:
             voice_listener.stop()
         plugin_loader.unload()
@@ -609,6 +652,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     print(f"FreeHands running for user '{user_id}'. "
           f"Move mouse to a screen corner (PyAutoGUI failsafe) to abort.")
+    print("Face tracking: enabled (smile, frown, surprise, eyebrows, mouth).")
     if not voice_enabled or not profile.voice_enabled:
         print("Voice: disabled.")
     print(f"Loaded profile dwell={profile.dwell_time_ms}ms, "

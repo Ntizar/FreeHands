@@ -33,6 +33,21 @@ GESTURE_LABELS = {
     "left_palm_scroll_down": "👈🖐↑ Left palm scroll down",
     "right_palm_scroll_up": "👉🖐↓ Right palm scroll up",
     "right_palm_scroll_down": "👉🖐↑ Right palm scroll down",
+    # Air-scroll / swipe gestures
+    "air_scroll_up": "👋 Air scroll up",
+    "air_scroll_down": "👋 Air scroll down",
+    "left_air_scroll_up": "👈👋 Air scroll up",
+    "left_air_scroll_down": "👈👋 Air scroll down",
+    "right_air_scroll_up": "👉👋 Air scroll up",
+    "right_air_scroll_down": "👉👋 Air scroll down",
+    # Facial expression gestures
+    "smile": "😊 Sonrisa",
+    "frown": "😠 Ceño",
+    "surprise": "😲 Sorpresa",
+    "raised_eyebrows": "😮 Cejas arriba",
+    "furrowed_brows": "😟 Cejas fruncidas",
+    "mouth_open": "👄 Boca abierta",
+    "tongue_out": "😛 Lengua fuera",
 }
 
 ACTION_OPTIONS = {
@@ -291,6 +306,9 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         self._gesture = QtWidgets.QLabel("Hand: waiting")
         self._gesture.setObjectName("fhRuntime")
         self._gesture.setWordWrap(True)
+        self._face = QtWidgets.QLabel("Rostro: —")
+        self._face.setObjectName("fhRuntime")
+        self._face.setWordWrap(True)
         bindings_scroll = QtWidgets.QScrollArea()
         bindings_scroll.setObjectName("fhBindingsScroll")
         bindings_scroll.setWidgetResizable(True)
@@ -323,6 +341,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
         layout.addWidget(self._swap_handedness)
         layout.addWidget(self._gaze)
         layout.addWidget(self._gesture)
+        layout.addWidget(self._face)
         layout.addWidget(self._last_action)
         layout.addWidget(self._pause_progress)
         layout.addWidget(bindings_scroll)
@@ -334,6 +353,7 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
             self._swap_handedness,
             self._gaze,
             self._gesture,
+            self._face,
             self._last_action,
             self._pause_progress,
             self._status,
@@ -467,6 +487,9 @@ class FreeHandsControlPanel(QtWidgets.QWidget):
     def set_runtime_info(self, gaze: str, gesture: str) -> None:
         self._gaze.setText(gaze)
         self._gesture.setText(gesture)
+
+    def set_face_info(self, face: str) -> None:
+        self._face.setText(face)
 
     def set_camera_preview(
         self,

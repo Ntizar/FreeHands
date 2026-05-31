@@ -1,11 +1,16 @@
 from .hand_tracker import HandObservation, HandTracker
 from .stabilizer import GestureStabilizer
-from .face_tracker import FaceObservation, FaceTracker
+from .face_tracker import (
+    FacialObservation,
+    FaceTracker,
+    FacialGestureId,
+)
 
 __all__ = [
     "HandObservation",
     "HandTracker",
     "GestureStabilizer",
-    "FaceObservation",
+    "FacialObservation",
+    "FacialGestureId",
     "FaceTracker",
 ]

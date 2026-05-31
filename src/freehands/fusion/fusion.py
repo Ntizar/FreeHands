@@ -40,6 +40,19 @@ AIR_SCROLL_ACTIONS = {
     "right_air_scroll_down": "scroll_down",
 }
 
+# Facial expression gestures map directly to actions (no dwell needed).
+# These are state-based expressions detected from FaceMesh landmarks.
+# Priority: surprise > smile > frown > raised_eyebrows > furrowed_brows > mouth_open
+FACIAL_GESTURE_ACTIONS = {
+    "smile": "smile",
+    "frown": "frown",
+    "surprise": "surprise",
+    "raised_eyebrows": "raised_eyebrows",
+    "furrowed_brows": "furrowed_brows",
+    "mouth_open": "mouth_open",
+    "tongue_out": "tongue_out",
+}
+
 SIDE_BINDING_FALLBACKS = {
     "left_pointing_up": "pointing_up",
     "right_pointing_up": "pointing_up",
@@ -321,6 +334,13 @@ class MultimodalFusion:
             scroll_action = AIR_SCROLL_ACTIONS[confirmed_gesture]
             self._last_action_at = time.monotonic()
             return FusionResult(cursor_xy, self.sm.state, 0.0, scroll_action, blink=False)
+
+        # Facial expression gestures fire immediately (no dwell, no state machine).
+        # These are state-based expressions detected from FaceMesh landmarks.
+        if confirmed_gesture and confirmed_gesture in FACIAL_GESTURE_ACTIONS:
+            facial_action = FACIAL_GESTURE_ACTIONS[confirmed_gesture]
+            self._last_action_at = time.monotonic()
+            return FusionResult(cursor_xy, self.sm.state, 0.0, facial_action, blink=False)
 
         # Any gesture explicitly mapped to toggle_pause is honoured in any state.
         if confirmed_gesture and candidate_action == "toggle_pause":

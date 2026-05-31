@@ -54,6 +54,9 @@ GestureId = Literal[
     "air_scroll_up", "air_scroll_down",
     "left_air_scroll_up", "left_air_scroll_down",
     "right_air_scroll_up", "right_air_scroll_down",
+    # Facial expression gestures (state-based, hold required)
+    "smile", "frown", "surprise", "raised_eyebrows", "furrowed_brows",
+    "mouth_open", "tongue_out",
 ]
 
 SIDE_AWARE_GESTURES = {"pointing_up", "middle_up", "two_fingers_up", "open_palm"}

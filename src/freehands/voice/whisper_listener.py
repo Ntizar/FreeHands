@@ -40,8 +40,10 @@ COMMAND_PHRASES: dict[str, tuple[str, ...]] = {
     "volume_up": ("volume up", "subir volumen", "volumen arriba", "mas volumen", "sube volumen", "volumen mas"),
     "volume_down": ("volume down", "bajar volumen", "volumen abajo", "menos volumen", "baja volumen", "volumen menos"),
     "volume_mute": ("mute", "silencio", "silenciar", "mudo", "muted", "quitar sonido"),
-    "teclado": ("teclado", "abrir teclado", "keyboard", "abre teclado", "teclado virtual"),
     "cerrar_teclado": ("cerrar teclado", "cierra teclado", "hide keyboard", "close keyboard", "ocultar teclado"),
+    "teclado": ("teclado", "abrir teclado", "keyboard", "abre teclado", "teclado virtual"),
+    "cerrar_emojis": ("cerrar emojis", "cierra emojis", "hide emoji", "close emoji", "ocultar emojis"),
+    "emojis": ("emojis", "abrir emojis", "emoji", "abrir emoji"),
 }
 
 

@@ -32,6 +32,7 @@ from .ui.audio_feedback import AudioFeedback
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
 from .ui.virtual_keyboard import VirtualKeyboardWidget
+from .ui.emoji_overlay import EmojiOverlayWidget
 from .voice import VoiceListener
 
 
@@ -332,6 +333,21 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     virtual_kb.key_pressed.connect(on_kb_key)
     virtual_kb.layout_changed.connect(on_kb_layout_changed)
 
+    # ── Emoji overlay ────────────────────────────────────────────────────
+    emoji_overlay = EmojiOverlayWidget()
+    emoji_overlay_open_hold_frames = 0
+    emoji_overlay_open_gesture: str | None = None
+
+    def on_emoji_selected(char: str) -> None:
+        """Handle an emoji selection from the overlay."""
+        overlay.flash_action(char)
+        panel.set_last_action(f"emoji: {char}")
+        audio_feedback.play_gesture_confirmation()
+        import pyautogui
+        pyautogui.write(char)
+
+    emoji_overlay.emoji_selected.connect(on_emoji_selected)
+
     overlay = GazeOverlay()
     overlay.show()
 
@@ -429,7 +445,6 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             return
 
         # Gaze
-        feats = gaze_tracker.extract(frame.image)
         cursor = regressor.predict(feats.vector) if feats else None
         blink_detected = feats.blink if feats else False
         blink_event = feats.blink_event if feats else None
@@ -718,6 +733,59 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             # Alternative: use a specific gesture binding.
             # For now, keyboard opens via voice command only.
 
+        # ── Emoji overlay ────────────────────────────────────────────────
+        # Open with voice command "emojis" or "abrir emojis".
+        # Close with voice command "cerrar emojis" or Escape key.
+        emoji_command = None
+        if voice_listener is not None:
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text in {"emojis", "abrir_emojis"}:
+                    emoji_command = "open"
+                elif cmd_text in {"cerrar_emojis", "close_emoji", "hide_emoji"}:
+                    emoji_command = "close"
+
+        if emoji_command == "open":
+            if not emoji_overlay.visible:
+                if result.cursor_xy is not None:
+                    emoji_overlay.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                overlay.flash_action("emojis: abierto")
+                panel.set_last_action("emojis abierto")
+        elif emoji_command == "close":
+            if emoji_overlay.visible:
+                overlay.flash_action("emojis: cerrado")
+                panel.set_last_action("emojis cerrado")
+                emoji_overlay.close()
+
+        if emoji_overlay.visible:
+            # Update dwell based on cursor position
+            emoji_overlay.update_dwell(result.cursor_xy)
+            # Process blink events for blink-to-select mode
+            if blink_detected:
+                emoji_overlay.process_blink(blink_detected)
+            # Dismiss on state change to IDLE
+            if result.state == State.IDLE:
+                emoji_overlay.close()
+        else:
+            # Track open-palm hold to open emoji overlay (longer hold than radial menu)
+            # Use a dedicated gesture: both hands open for 3 seconds
+            if confirmed in {"left_open_palm", "right_open_palm"}:
+                if emoji_overlay_open_gesture != confirmed:
+                    emoji_overlay_open_gesture = confirmed
+                    emoji_overlay_open_hold_frames = 0
+                emoji_overlay_open_hold_frames += 1
+                frames_needed = int(2000 / (1000 / 30))  # 2 seconds at 30fps
+                if emoji_overlay_open_hold_frames >= frames_needed:
+                    if result.cursor_xy is not None:
+                        emoji_overlay.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                    overlay.flash_action("emojis: abierto (gesto)")
+                    panel.set_last_action("emojis abierto (gesto)")
+                    emoji_overlay_open_hold_frames = 0
+                    emoji_overlay_open_gesture = None
+            else:
+                if emoji_overlay_open_gesture is not None:
+                    emoji_overlay_open_gesture = None
+                    emoji_overlay_open_hold_frames = 0
+
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state,
                             snap_grid.active)
         panel.set_state(result.state)
@@ -752,6 +820,12 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             overlay.flash_action("teclado: cerrado (esc)")
             panel.set_last_action("teclado cerrado (esc)")
             virtual_kb.close()
+
+        # Close emoji overlay on Escape (if visible)
+        if emoji_overlay.visible and result.fired_action == "escape":
+            overlay.flash_action("emojis: cerrado (esc)")
+            panel.set_last_action("emojis cerrado (esc)")
+            emoji_overlay.close()
 
         if result.fired_action:
             label = result.fired_action

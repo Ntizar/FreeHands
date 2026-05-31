@@ -283,7 +283,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     radial_menu.action_selected.connect(execute_radial_action)
 
     # ── Virtual keyboard ───────────────────────────────────────────────
-    virtual_kb = VirtualKeyboardWidget()
+    virtual_kb = VirtualKeyboardWidget(dual_layout=True)
     virtual_kb_open_hold_frames = 0
     virtual_kb_open_gesture: str | None = None
     kb_typing_buffer: list[str] = []  # chars typed this session
@@ -313,7 +313,22 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         overlay.flash_action(char_or_action)
         panel.set_last_action(f"tecla: {char_or_action}")
 
+    def on_kb_layout_changed(side: str) -> None:
+        """Handle dual-layout side change — play audio feedback."""
+        if side == "left":
+            audio_feedback.play_gesture_confirmation()
+            overlay.flash_action("teclado: lado izq")
+            panel.set_last_action("teclado: lado izq")
+        elif side == "right":
+            audio_feedback.play_gesture_confirmation()
+            overlay.flash_action("teclado: lado der")
+            panel.set_last_action("teclado: lado der")
+        else:
+            overlay.flash_action("teclado: completo")
+            panel.set_last_action("teclado: completo")
+
     virtual_kb.key_pressed.connect(on_kb_key)
+    virtual_kb.layout_changed.connect(on_kb_layout_changed)
 
     overlay = GazeOverlay()
     overlay.show()
@@ -659,6 +674,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         if virtual_kb.visible:
             # Update dwell based on cursor position
             virtual_kb.update_dwell(result.cursor_xy)
+            # Process blink events for blink-to-select mode
+            if blink_detected:
+                virtual_kb.process_blink(blink_detected)
             # Dismiss on state change to IDLE
             if result.state == State.IDLE:
                 text = "".join(kb_typing_buffer)

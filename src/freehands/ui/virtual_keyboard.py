@@ -5,18 +5,28 @@ A dwell ring fills around the key under the gaze cursor; when full, the
 key is "pressed" and its character is typed into the currently focused
 text field via pyautogui.
 
+Dual-layout mode (mejora #22):
+When dual_layout is enabled, the keyboard splits into left and right halves.
+The active half is determined by which side of the screen the gaze cursor is on.
+This reduces the number of keys to choose from, making selection faster.
+Audio feedback plays when switching sides. Blink-to-select is also available
+as an alternative to dwell.
+
 Design rules
 ------------
 * Light-mode liquid-glass aesthetic matching the Ntizar palette.
 * Semi-transparent background so the desktop is visible through the keyboard.
 * Standard QWERTY layout with shift, space, enter, backspace.
 * Dwell time configurable (default 800 ms).
+* Dual-layout mode: left/right split based on gaze position.
+* Blink-to-select: double blink confirms the highlighted key.
 * Keyboard dismisses on Escape or a dedicated "close keyboard" dwell.
 * All text typed via pyautogui hotkey/press so it works in any focused field.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum, auto
 from typing import Final
 
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -37,6 +47,17 @@ KEYBOARD_ANIM_STEP: Final[int] = 16       # ms per animation frame (~60fps)
 # Key dimensions
 KEY_WIDTH: Final[int] = 52
 KEY_HEIGHT: Final[int] = 44
+
+# Dual-layout: blink-to-select dwell time (shorter for faster typing)
+BLINK_SELECT_DWELL_MS: Final[int] = 500
+
+
+class LayoutSide(Enum):
+    """Which half of the dual keyboard is active."""
+    BOTH = auto()       # full keyboard
+    LEFT = auto()       # left half only
+    RIGHT = auto()      # right half only
+
 
 # ── Keyboard layout ─────────────────────────────────────────────────────────
 
@@ -71,6 +92,7 @@ class KeyDefinition:
     width: int = KEY_WIDTH
     height: int = KEY_HEIGHT
     is_special: bool = False       # True for shift/space/backspace/enter
+    is_left_key: bool = True       # True if key belongs to left half
 
     @property
     def rect(self) -> QtCore.QRect:
@@ -101,6 +123,10 @@ class KeyboardState:
     opening: bool = False
     closing: bool = False
     confirmed_keys: list[str] = field(default_factory=list)  # last confirmed this frame
+    layout_side: LayoutSide = LayoutSide.BOTH  # which half is visible
+    blink_select_mode: bool = False  # blink-to-select instead of dwell
+    blink_count: int = 0           # consecutive blinks for select
+    blink_timestamp: float = 0.0   # last blink time (for debouncing)
 
 
 # ── Virtual keyboard widget ─────────────────────────────────────────────────
@@ -112,12 +138,19 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
     (the cursor highlight follows the key under gaze). Dwell confirms
     the key. Shift toggles uppercase. Space types a space. Enter sends
     Enter. Backspace deletes the last character.
+
+    Dual-layout mode:
+    When dual_layout is True, the keyboard shows only the half where the
+    gaze cursor is positioned (left or right of screen centre). This halves
+    the number of keys to scan, speeding up selection.
     """
 
     key_pressed = QtCore.pyqtSignal(str)  # character or action name
     keyboard_closed = QtCore.pyqtSignal()
+    layout_changed = QtCore.pyqtSignal(str)  # "left", "right", "both"
 
-    def __init__(self, dwell_ms: int = KEYBOARD_DWELL_MS) -> None:
+    def __init__(self, dwell_ms: int = KEYBOARD_DWELL_MS,
+                 dual_layout: bool = True) -> None:
         super().__init__(
             None,
             QtCore.Qt.WindowType.FramelessWindowHint
@@ -130,9 +163,12 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
         self.hide()
 
         self._dwell_ms = dwell_ms
+        self._dual_layout = dual_layout
         self._state = KeyboardState()
         self._shift_active = False
         self._typing_buffer: list[str] = []  # characters typed this session
+        self._screen_width = 1920  # default, updated on open
+        self._blink_select_dwell_ms = BLINK_SELECT_DWELL_MS
 
         # Animation timer
         self._anim_timer = QtCore.QTimer(self)
@@ -149,6 +185,28 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
 
     # ── public API ───────────────────────────────────────────────────────
 
+    @property
+    def dual_layout(self) -> bool:
+        return self._dual_layout
+
+    def set_dual_layout(self, enabled: bool) -> None:
+        """Enable or disable dual-layout mode."""
+        if self._dual_layout != enabled:
+            self._dual_layout = enabled
+            self._state.layout_side = LayoutSide.BOTH
+            self.update()
+
+    @property
+    def blink_select_mode(self) -> bool:
+        return self._state.blink_select_mode
+
+    def set_blink_select_mode(self, enabled: bool) -> None:
+        """Enable blink-to-select mode (faster than dwell)."""
+        self._state.blink_select_mode = enabled
+        if enabled:
+            self._state.dwell_progress = 0.0
+            self._dwell_timer.stop()
+
     def _build_keys(self) -> None:
         """Build the key grid from KEYBOARD_ROWS."""
         self._keys: list[KeyDefinition] = []
@@ -163,6 +221,10 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
             for col_idx, (label, char) in enumerate(row):
                 x = x_start + col_idx * (KEY_WIDTH + KEY_GAP) + KEY_WIDTH // 2
                 is_special = char in {"shift", "space", "enter", "backspace"}
+                # Determine if key belongs to left or right half
+                # Left half: first half of keys in each row
+                half_pos = len(row) // 2
+                is_left = col_idx < half_pos
                 key = KeyDefinition(
                     label=label,
                     char=char,
@@ -171,6 +233,7 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
                     width=KEY_WIDTH,
                     height=KEY_HEIGHT,
                     is_special=is_special,
+                    is_left_key=is_left,
                 )
                 self._keys.append(key)
 
@@ -188,7 +251,9 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
             opening=True,
             closing=False,
             confirmed_keys=[],
+            layout_side=LayoutSide.BOTH,
         )
+        self._screen_width = screen_w
         self._start_animation(KEYBOARD_OPEN_DURATION_MS)
         self.show()
         self._typing_buffer = []
@@ -218,6 +283,86 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
     def typing_buffer(self) -> str:
         return "".join(self._typing_buffer)
 
+    def get_visible_keys(self) -> list[KeyDefinition]:
+        """Return keys visible in current layout mode."""
+        if not self._dual_layout or self._state.layout_side == LayoutSide.BOTH:
+            return self._state.keys
+        side = self._state.layout_side
+        return [k for k in self._state.keys if k.is_left_key == (side == LayoutSide.LEFT)]
+
+    # ── dual layout ──────────────────────────────────────────────────────
+
+    def update_layout_side(self, cursor_x: int | None) -> None:
+        """Update which half of the keyboard is visible based on cursor X position.
+
+        If cursor is on the left half of the screen, show left keys only.
+        If cursor is on the right half, show right keys only.
+        If cursor is near the centre, show both halves.
+        """
+        if not self._dual_layout or cursor_x is None:
+            if self._state.layout_side != LayoutSide.BOTH:
+                self._state.layout_side = LayoutSide.BOTH
+                self.layout_changed.emit("both")
+            return
+
+        centre = self._screen_width // 2
+        tolerance = self._screen_width // 10  # 10% of screen width as centre tolerance
+
+        if abs(cursor_x - centre) <= tolerance:
+            new_side = LayoutSide.BOTH
+            side_name = "both"
+        elif cursor_x < centre:
+            new_side = LayoutSide.LEFT
+            side_name = "left"
+        else:
+            new_side = LayoutSide.RIGHT
+            side_name = "right"
+
+        if self._state.layout_side != new_side:
+            self._state.layout_side = new_side
+            self._state.dwell_progress = 0.0
+            self._state.selected_key = None
+            self._dwell_timer.stop()
+            self.layout_changed.emit(side_name)
+            self.update()
+
+    # ── blink-to-select ──────────────────────────────────────────────────
+
+    def process_blink(self, blink: bool) -> None:
+        """Process a blink event for blink-to-select mode.
+
+        A single blink starts the dwell timer. A second blink within
+        BLINK_SELECT_DWELL_MS confirms the selection.
+        """
+        if not self._state.blink_select_mode or not self._state.visible:
+            return
+
+        if blink:
+            now = QtCore.QDateTime.currentDateTime().toMSecsSinceEpoch() / 1000.0
+            time_since_last = now - self._state.blink_timestamp
+
+            if time_since_last < 0.6:  # second blink within 600ms
+                # Double blink — confirm current selection
+                if self._state.selected_key is not None:
+                    self._confirm_dwell()
+            else:
+                # First blink — start dwell timer
+                self._state.blink_count += 1
+                self._state.blink_timestamp = now
+                if self._state.selected_key is not None:
+                    dwell_steps = self._blink_select_dwell_ms / KEYBOARD_ANIM_STEP
+                    self._state.dwell_progress = min(
+                        1.0,
+                        self._state.dwell_progress + 1.0 / dwell_steps,
+                    )
+                    if self._state.dwell_progress >= 1.0:
+                        self._confirm_dwell()
+                    else:
+                        self._dwell_timer.start(KEYBOARD_ANIM_STEP)
+        else:
+            # Reset blink counter on non-blink
+            self._state.blink_count = 0
+
     # ── animation ────────────────────────────────────────────────────────
 
     def _start_animation(self, duration_ms: int) -> None:
@@ -244,7 +389,12 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
             return
 
         cx, cy = self._state.centre_x, self._state.centre_y
-        keys = self._state.keys
+
+        # Update layout side based on cursor X position
+        if cursor_xy is not None:
+            self.update_layout_side(cursor_xy[0])
+
+        keys = self.get_visible_keys()
 
         if cursor_xy is None:
             self._dwell_timer.stop()
@@ -404,15 +554,24 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
         font.setPointSize(9)
         font.setBold(True)
         p.setFont(font)
+
+        # Show layout indicator in title
+        layout_label = ""
+        if self._dual_layout and self._state.layout_side != LayoutSide.BOTH:
+            if self._state.layout_side == LayoutSide.LEFT:
+                layout_label = " [OJO IZQ]"
+            else:
+                layout_label = " [OJO DER]"
+
         p.drawText(
             bg_x + 16, bg_y - 6,
             KEYBOARD_WIDTH - 32, 16,
             QtCore.Qt.AlignmentFlag.AlignCenter,
-            "Teclado virtual — mira una tecla para escribir",
+            f"Teclado virtual — mira una tecla para escribir{layout_label}",
         )
 
         # ── Keys ─────────────────────────────────────────────────────────
-        keys = self._state.keys
+        keys = self.get_visible_keys()
 
         for key in keys:
             screen_x = cx - KEYBOARD_WIDTH // 2 + key.x
@@ -516,6 +675,18 @@ class VirtualKeyboardWidget(QtWidgets.QWidget):
                 KEYBOARD_WIDTH - 32, 16,
                 QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
                 f"Texto: {preview_text}",
+            )
+
+        # ── Dual-layout indicator ────────────────────────────────────────
+        if self._dual_layout and self._state.layout_side != LayoutSide.BOTH:
+            # Draw a subtle divider line at screen centre
+            indicator_color = QtGui.QColor(PALETTE.orange)
+            indicator_color.setAlpha(alpha // 3)
+            p.setPen(QtGui.QPen(indicator_color, 1))
+            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            p.drawLine(
+                bg_x + KEYBOARD_WIDTH // 2 - 1, bg_y + 16,
+                bg_x + KEYBOARD_WIDTH // 2 - 1, bg_y + KEYBOARD_HEIGHT - 16,
             )
 
     def closeEvent(self, _event) -> None:  # noqa: N802 (Qt naming)

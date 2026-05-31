@@ -6,6 +6,7 @@ from .face_tracker import (
     FacialGestureId,
 )
 from .volume_control import VolumeControl, VolumeObservation
+from .hand_fusion import HandFusion, BimanualResult
 
 __all__ = [
     "HandObservation",
@@ -16,4 +17,6 @@ __all__ = [
     "FaceTracker",
     "VolumeControl",
     "VolumeObservation",
+    "HandFusion",
+    "BimanualResult",
 ]

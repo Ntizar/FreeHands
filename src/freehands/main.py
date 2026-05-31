@@ -20,11 +20,11 @@ from .config import (
     POINTER_MOVE_MIN_DELTA_PX,
     TARGET_FPS,
 )
-from .fusion import MultimodalFusion, State, action_for_gesture, decide_channel_priority
+from .fusion import MultimodalFusion, State, FusionResult, action_for_gesture, decide_channel_priority
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gaze.dead_zones import DeadZoneClamper
 from .gaze.snap_to_grid import SnapToGrid
-from .gestures import GestureStabilizer, HandTracker, VolumeControl
+from .gestures import GestureStabilizer, HandTracker, VolumeControl, HandFusion
 from .gestures.face_tracker import FaceTracker, FacialObservation
 from .profiles import GestureThreshold, load_profile, save_profile
 from .plugins import PluginLoader
@@ -248,6 +248,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     )
     # Volume control by hand vertical position
     volume_control = VolumeControl()
+    # Bimanual fusion: right hand = cursor, left hand = scroll + zoom
+    bimanual = HandFusion()
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))
     dead_zone = DeadZoneClamper(screen.width(), screen.height())
     snap_grid = SnapToGrid()
@@ -603,6 +605,50 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             # Reset volume control when hand is lost to avoid stale state
             if not hand_obs.hands:
                 volume_control.reset()
+
+        # ── Bimanual fusion: left hand = scroll/zoom, right hand = cursor ─
+        # When both hands are visible, the left hand controls scroll (vertical
+        # sweep) and zoom (pinch open/close) while the right hand provides
+        # cursor fine-tuning. With a single hand, this is a no-op and normal
+        # single-hand behaviour applies.
+        bimanual_result = bimanual.update(
+            hand_obs.hands,
+            hand_obs.handedness,
+            hand_obs.confidence,
+        )
+        if bimanual_result.scroll_action and fusion.sm.state != State.IDLE:
+            if dispatcher.execute(bimanual_result.scroll_action, at_xy=cursor):
+                overlay.flash_action(f"bimanual: {bimanual_result.scroll_action}")
+                panel.set_last_action(f"bimanual: {bimanual_result.scroll_action}")
+                audio_feedback.play_gesture_confirmation()
+        if bimanual_result.zoom_action and fusion.sm.state != State.IDLE:
+            if dispatcher.execute(bimanual_result.zoom_action, at_xy=cursor):
+                overlay.flash_action(f"bimanual: {bimanual_result.zoom_action}")
+                panel.set_last_action(f"bimanual: {bimanual_result.zoom_action}")
+                audio_feedback.play_gesture_confirmation()
+        # Apply right-hand cursor offset when bimanual is active
+        if (bimanual_result.right_active and bimanual_result.left_active
+                and result.cursor_xy is not None):
+            ox, oy = bimanual_result.cursor_offset
+            result = FusionResult(
+                cursor_xy=(
+                    result.cursor_xy[0] + int(ox),
+                    result.cursor_xy[1] + int(oy),
+                ),
+                state=result.state,
+                dwell_progress=result.dwell_progress,
+                fired_action=result.fired_action,
+                blink=result.blink,
+                blink_event=result.blink_event,
+                voice_action=result.voice_action,
+                gaze_confirmed=result.gaze_confirmed,
+                head_pose_active=result.head_pose_active,
+                head_coarse_dx=result.head_coarse_dx,
+                head_coarse_dy=result.head_coarse_dy,
+            )
+        # Reset bimanual when hands are lost
+        if not hand_obs.hands:
+            bimanual.reset()
 
         # ── Fusion: gesture + blink + AND voice ───────────────────────────
         # Use step_and_voice which applies the multimodal AND fusion:

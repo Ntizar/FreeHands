@@ -96,6 +96,8 @@ class GazeOverlay(QtWidgets.QWidget):
         self._state = State.IDLE
         self._action_flash: str | None = None
         self._snap_active = False
+        self._dictation_active = False
+        self._dictation_text: str = ""
 
         self._flash_timer = QtCore.QTimer(self)
         self._flash_timer.setSingleShot(True)
@@ -199,6 +201,25 @@ class GazeOverlay(QtWidgets.QWidget):
             p.setFont(font)
             p.drawText(x + 32, y + 6, f"-> {self._action_flash}")
 
+        # Dictation-ready indicator: pulsing green ring when gaze is ready
+        # to activate dictation (user gazed at text region for 500ms).
+        if self._dictation_active:
+            pulse = 0.5 + 0.5 * abs(QtCore.QTime.currentTime().msec() % 1000 - 500) / 500.0
+            dict_pen = QtGui.QPen(
+                QtGui.QColor(PALETTE.orange).lighter(115 + int(pulse * 40)), 3
+            )
+            dict_pen.setCosmetic(True)
+            p.setPen(dict_pen)
+            p.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            dict_rect = QtCore.QRect(x - 28, y - 28, 56, 56)
+            p.drawEllipse(dict_rect)
+
+    def set_dictation_indicator(self, active: bool, text: str = "") -> None:
+        """Set the dictation mode indicator state for the overlay."""
+        self._dictation_active = active
+        self._dictation_text = text
+        self.update()
+
     def _draw_state_badge(self, p: QtGui.QPainter) -> None:
         text = {
             State.IDLE: "PAUSED",
@@ -225,6 +246,19 @@ class GazeOverlay(QtWidgets.QWidget):
         font.setBold(True)
         p.setFont(font)
         p.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, f"FreeHands · {text}")
+
+        # Dictation mode indicator — bottom-right badge
+        if self._dictation_active:
+            badge_text = self._dictation_text or "DICTANDO"
+            badge_color = PALETTE.orange
+            bg2 = QtGui.QColor(255, 255, 255, 200)
+            p.setBrush(bg2)
+            p.setPen(QtGui.QPen(QtGui.QColor(badge_color), 2))
+            badge_rect = QtCore.QRect(self.width() - 170, 20, 150, 36)
+            p.drawRoundedRect(badge_rect, 18, 18)
+            p.setPen(QtGui.QColor(badge_color))
+            p.setFont(font)
+            p.drawText(badge_rect, QtCore.Qt.AlignmentFlag.AlignCenter, f"🎙 {badge_text}")
 
 
 class FreeHandsControlPanel(QtWidgets.QWidget):

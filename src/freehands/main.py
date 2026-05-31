@@ -34,7 +34,7 @@ from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
 from .ui.virtual_keyboard import VirtualKeyboardWidget
 from .ui.emoji_overlay import EmojiOverlayWidget
 from .ui.gaze_text_selector import GazeTextSelectorWidget
-from .voice import VoiceListener
+from .voice import VoiceListener, ContinuousDictationEngine, DictationConfig, DictationIntentDetector
 
 
 OPEN_PALM_HOLD_GESTURES = {"left_open_palm", "right_open_palm"}
@@ -342,6 +342,16 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     gaze_text_sel_open_gesture: str | None = None
     text_selection_buffer: list[str] = []  # chars typed this session
 
+    # ── Dictation intent detector (multimodal: gaze + voice) ───────────
+    # Detects when the user gazes at a text region long enough to be
+    # "ready to dictate". When ready + voice trigger ("escribe"), starts
+    # the continuous dictation engine.
+    dictation_intent = DictationIntentDetector()
+    dictation_intent_ready_frames = 0
+    # Text region centre for hit-testing (updated when gaze_text_sel opens)
+    text_sel_centre_x: int = 0
+    text_sel_centre_y: int = 0
+
     def on_text_region_selected(region) -> None:
         """Handle a text region selection from the gaze text selector."""
         overlay.flash_action(f"region: {region.width}x{region.height}")
@@ -407,7 +417,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     panel.set_handedness_swapped(profile.swap_handedness)
     panel.show()
 
-    from .voice import VoiceListener, ContinuousDictationEngine, DictationConfig
+    from .voice import VoiceListener, ContinuousDictationEngine, DictationConfig, DictationIntentDetector
 
     # ── Voice ────────────────────────────────────────────────────────────
     if voice_enabled and profile.voice_enabled:
@@ -628,6 +638,60 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             overlay.flash_action("dictado: detenido")
             panel.set_last_action("dictado por voz desactivado")
             audio_feedback.play_voice_confirmation()
+
+        # ── Multimodal dictation: gaze at text + voice trigger ────────────
+        # When the user gazes at a detected text region for 500ms (ready),
+        # saying "escribe" or "dictar" starts continuous dictation. This
+        # provides precise, intentional dictation — the user must look at
+        # where they want to type AND say the trigger word.
+        # The overlay shows a pulsing indicator when ready_to_activate.
+        if dictation_intent.ready_to_activate and not dictation_active:
+            dictation_intent_ready_frames += 1
+            # Show "ready" indicator on overlay for 3 frames (100ms)
+            if dictation_intent_ready_frames <= 3:
+                region_label = ""
+                if dictation_intent.hovered_region:
+                    region_label = f" [{dictation_intent.hovered_region.width}x{dictation_intent.hovered_region.height}]"
+                overlay.set_dictation_indicator(True, f"listo{region_label}")
+        else:
+            dictation_intent_ready_frames = 0
+            if dictation_intent.ready_to_activate and not dictation_active:
+                overlay.set_dictation_indicator(False)
+
+        # Check for voice trigger while gazing at text
+        if (voice_listener is not None and not dictation_active
+                and dictation_intent.ready_to_activate
+                and dictation_intent.gazing_at_text):
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text in {"gaze_typing", "escribir", "escribir_texto", "start_dictation"}:
+                    # Multimodal trigger: gaze + voice
+                    if dictation_engine is not None:
+                        dictation_intent.consume_ready()
+                        dictation_intent.reset()
+                        dictation_intent_ready_frames = 0
+                        dictation_engine.start()
+                        dictation_active = True
+                        region_info = ""
+                        if dictation_intent.hovered_region:
+                            region_info = f" [{dictation_intent.hovered_region.width}x{dictation_intent.hovered_region.height}]"
+                        overlay.set_dictation_indicator(True, "dictando")
+                        overlay.flash_action(f"dictado: activo{region_info}")
+                        panel.set_last_action("dictado multimodal activado (mirada+voz)")
+                        audio_feedback.play_voice_confirmation()
+                    break
+
+        # Update dictation intent detector with text regions from gaze_text_sel
+        if gaze_text_sel.visible and gaze_text_sel._state.regions:
+            cx = gaze_text_sel._state.centre_x
+            cy = gaze_text_sel._state.centre_y
+            dictation_intent.update_dwell(
+                result.cursor_xy,
+                gaze_text_sel._state.regions,
+                cx, cy,
+            )
+        elif dictation_active:
+            # If dictation is active but text selector closed, reset detector
+            dictation_intent.reset()
 
         # ── Facial expressions: instant-action, no dwell, no state machine ──
         # Face gestures fire immediately when a bound facial expression is

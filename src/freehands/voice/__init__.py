@@ -3,6 +3,7 @@ from .continuous_dictation import (
     DictationConfig,
     DictationState,
 )
+from .dictation_intent import DictationIntentDetector, DictationIntentState
 from .whisper_listener import VoiceCommand, VoiceListener, parse_voice_command
 
 __all__ = [
@@ -12,4 +13,6 @@ __all__ = [
     "ContinuousDictationEngine",
     "DictationConfig",
     "DictationState",
+    "DictationIntentDetector",
+    "DictationIntentState",
 ]

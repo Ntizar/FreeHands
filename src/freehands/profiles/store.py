@@ -146,6 +146,9 @@ GESTURE_BINDING_PRIORITY = [
     "furrowed_brows",
     "mouth_open",
     "tongue_out",
+    # Volume control by hand vertical position (auto-detected)
+    "volume_up",
+    "volume_down",
 ]
 
 INSTANT_MOUSE_GESTURES = (
@@ -172,6 +175,9 @@ INSTANT_MOUSE_GESTURES = (
     "left_air_scroll_down",
     "right_air_scroll_up",
     "right_air_scroll_down",
+    # Volume control gestures are inherently instant (position-based)
+    "volume_up",
+    "volume_down",
 )
 
 CLICK_FAMILY_GESTURES = {
@@ -243,6 +249,9 @@ class Profile(BaseModel):
             "furrowed_brows": GestureThreshold(stability_frames=6, confidence_min=0.70),
             "mouth_open": GestureThreshold(stability_frames=5, confidence_min=0.65),
             "tongue_out": GestureThreshold(stability_frames=5, confidence_min=0.65),
+            # Volume control gestures (auto-detected, instant)
+            "volume_up": GestureThreshold(stability_frames=1, confidence_min=0.50),
+            "volume_down": GestureThreshold(stability_frames=1, confidence_min=0.50),
         }
     )
     gesture_bindings: dict[str, str] = Field(
@@ -290,6 +299,11 @@ class Profile(BaseModel):
             "furrowed_brows": "",
             "mouth_open": "",
             "tongue_out": "",
+            # Volume control by hand vertical position (auto-detected)
+            # These are handled directly by the VolumeControl module,
+            # not through gesture bindings — always active when hand visible.
+            "volume_up": "",
+            "volume_down": "",
         }
     )
     voice_enabled: bool = True

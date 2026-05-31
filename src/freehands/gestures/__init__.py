@@ -5,6 +5,7 @@ from .face_tracker import (
     FaceTracker,
     FacialGestureId,
 )
+from .volume_control import VolumeControl, VolumeObservation
 
 __all__ = [
     "HandObservation",
@@ -13,4 +14,6 @@ __all__ = [
     "FacialObservation",
     "FacialGestureId",
     "FaceTracker",
+    "VolumeControl",
+    "VolumeObservation",
 ]

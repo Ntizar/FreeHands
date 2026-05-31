@@ -24,7 +24,7 @@ from .fusion import MultimodalFusion, State, action_for_gesture, decide_channel_
 from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
 from .gaze.dead_zones import DeadZoneClamper
 from .gaze.snap_to_grid import SnapToGrid
-from .gestures import GestureStabilizer, HandTracker
+from .gestures import GestureStabilizer, HandTracker, VolumeControl
 from .gestures.face_tracker import FaceTracker, FacialObservation
 from .profiles import GestureThreshold, load_profile, save_profile
 from .plugins import PluginLoader
@@ -244,6 +244,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         per_gesture=gesture_thresholds,
         rearm_frames=1,
     )
+    # Volume control by hand vertical position
+    volume_control = VolumeControl()
     regressor = GazeRegressor(profile.gaze_model, (screen.width(), screen.height()))
     dead_zone = DeadZoneClamper(screen.width(), screen.height())
     snap_grid = SnapToGrid()
@@ -539,7 +541,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 handle_voice_action(cmd.action, cursor)  # state/system commands
                 voice_actions_this_frame.append(cmd.action)
 
-        # ── Facial expressions: instant-action, no dwell, no state machine ─
+        # ── Facial expressions: instant-action, no dwell, no state machine ──
         # Face gestures fire immediately when a bound facial expression is
         # detected (e.g. smile → custom action, surprise → custom action).
         # This runs before fusion so facial actions take priority over
@@ -549,6 +551,26 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             panel.set_last_action(f"rostro: {face_action}")
             dispatcher.execute(face_action, at_xy=cursor)
             audio_feedback.play_gesture_confirmation()
+
+        # ── Volume control by hand vertical position ─────────────────────
+        # If a hand is detected, check its vertical position to control
+        # volume. Upper half → volume up, lower half → volume down.
+        # This is independent of gesture bindings — always active when
+        # a hand is visible and the system is ACTIVE.
+        volume_obs = volume_control.detect(
+            hand_obs.hands,
+            hand_obs.handedness,
+            hand_obs.confidence,
+        )
+        if volume_obs.gesture and fusion.sm.state != State.IDLE:
+            if dispatcher.execute(volume_obs.gesture, at_xy=cursor):
+                side_label = f" ({volume_obs.side})" if volume_obs.side else ""
+                overlay.flash_action(f"volumen: {volume_obs.gesture}{side_label}")
+                panel.set_last_action(f"volumen: {volume_obs.gesture}")
+                audio_feedback.play_gesture_confirmation()
+            # Reset volume control when hand is lost to avoid stale state
+            if not hand_obs.hands:
+                volume_control.reset()
 
         # ── Fusion: gesture + blink + AND voice ───────────────────────────
         # Use step_and_voice which applies the multimodal AND fusion:

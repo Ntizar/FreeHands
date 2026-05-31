@@ -46,6 +46,27 @@ COMMAND_PHRASES: dict[str, tuple[str, ...]] = {
     "emojis": ("emojis", "abrir emojis", "emoji", "abrir emoji"),
     "gaze_typing": ("gaze typing", "escribir", "escribir texto", "escritura", "escribir con mirada", "open gaze typing"),
     "cerrar_escritura": ("cerrar escritura", "cierra escritura", "hide gaze typing", "close gaze typing", "ocultar escritura"),
+    # ── Continuous dictation commands ────────────────────────────────
+    # stop_dictation MUST come before start_dictation because
+    # "parar dictado" contains "dictado" which is a start phrase.
+    "stop_dictation": (
+        "parar dictado",
+        "parar dicta",
+        "dejar de dictar",
+        "terminar dictado",
+        "terminar dicta",
+        "dejar dictado",
+    ),
+    "start_dictation": (
+        "dictar",
+        "dictado",
+        "empezar dictado",
+        "empieza dictado",
+        "empezar a dictar",
+        "empieza a dictar",
+        "begin dictation",
+        "dicta",
+    ),
 }
 
 

@@ -407,6 +407,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     panel.set_handedness_swapped(profile.swap_handedness)
     panel.show()
 
+    from .voice import VoiceListener, ContinuousDictationEngine, DictationConfig
+
     # ── Voice ────────────────────────────────────────────────────────────
     if voice_enabled and profile.voice_enabled:
         try:
@@ -420,6 +422,28 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         except Exception as exc:
             voice_listener = None
             print(f"Voice: disabled ({exc})")
+
+    # ── Continuous dictation engine ──────────────────────────────────────
+    # Runs alongside VoiceListener to provide free-form voice-to-text
+    # dictation. Activated by "dictar" / "escribir texto" and terminated
+    # by "parar dictado" / "stop dictation" / Escape.
+    dictation_engine: ContinuousDictationEngine | None = None
+    dictation_active = False
+
+    def _on_dictated_text(text: str) -> None:
+        """Callback: write dictated text into the focused text field."""
+        if text:
+            import pyautogui
+            pyautogui.write(text)
+
+    dictation_config = DictationConfig(
+        model_size=profile.voice_model_size,
+        language=profile.voice_language,
+        backend=profile.voice_asr_backend,
+        vosk_model_path=profile.voice_vosk_model_path or None,
+        on_text=_on_dictated_text,
+    )
+    dictation_engine = ContinuousDictationEngine(dictation_config)
 
     # ── Plugin system ────────────────────────────────────────────────────
     from pathlib import Path as _Path
@@ -444,6 +468,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             return
         # Keyboard commands bypass state check — handled in tick() loop.
         if action in {"teclado", "cerrar_teclado"}:
+            return
+        # Dictation commands are handled in tick() loop.
+        if action in {"start_dictation", "stop_dictation"}:
             return
         if fusion.sm.state == State.IDLE:
             overlay.flash_action("voice ignored: paused")
@@ -574,6 +601,33 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 print(f"[voice] {cmd.text!r} -> {cmd.action}")
                 handle_voice_action(cmd.action, cursor)  # state/system commands
                 voice_actions_this_frame.append(cmd.action)
+
+        # ── Continuous dictation: start/stop ─────────────────────────────
+        # Detect dictation start/stop commands from the voice listener.
+        # When active, the dictation engine transcribes free speech and
+        # writes text into the OS-focused text field via pyautogui.
+        dict_command = None
+        if voice_listener is not None:
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text == "start_dictation":
+                    dict_command = "start"
+                elif cmd_text == "stop_dictation":
+                    dict_command = "stop"
+
+        if dict_command == "start" and dictation_engine is not None:
+            if not dictation_active:
+                dictation_engine.start()
+                dictation_active = True
+                overlay.flash_action("dictado: activo")
+                panel.set_last_action("dictado por voz activado")
+                audio_feedback.play_voice_confirmation()
+        elif dict_command == "stop" and dictation_active:
+            if dictation_engine is not None:
+                dictation_engine.stop()
+            dictation_active = False
+            overlay.flash_action("dictado: detenido")
+            panel.set_last_action("dictado por voz desactivado")
+            audio_feedback.play_voice_confirmation()
 
         # ── Facial expressions: instant-action, no dwell, no state machine ──
         # Face gestures fire immediately when a bound facial expression is
@@ -916,6 +970,12 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                             snap_grid.active)
         panel.set_state(result.state)
 
+        # Show dictation active indicator on overlay
+        if dictation_active:
+            buffer = dictation_engine.buffer_text if dictation_engine else ""
+            if buffer:
+                overlay.flash_action(f"dictando: {buffer[:60]}")
+
         if result.state == State.IDLE:
             fine_aim.reset()
             snap_grid.reset()
@@ -997,6 +1057,8 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         face_tracker.close()
         if voice_listener is not None:
             voice_listener.stop()
+        if dictation_active and dictation_engine is not None:
+            dictation_engine.stop()
         plugin_loader.unload()
 
     app.aboutToQuit.connect(cleanup)

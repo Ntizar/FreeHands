@@ -35,6 +35,7 @@ from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
 from .ui.virtual_keyboard import VirtualKeyboardWidget
 from .ui.emoji_overlay import EmojiOverlayWidget
 from .ui.gaze_text_selector import GazeTextSelectorWidget
+from .ui.app_switcher import AppSwitcherWidget
 from .voice import VoiceListener, ContinuousDictationEngine, DictationConfig, DictationIntentDetector
 
 
@@ -395,6 +396,25 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         pyautogui.write(char)
 
     emoji_overlay.emoji_selected.connect(on_emoji_selected)
+
+    # ── App switcher ─────────────────────────────────────────────────────
+    # Opens with voice command "switcher" or "conmutador".
+    # Closes with voice command "cerrar switcher", Escape key, or pinch-close gesture.
+    app_switcher = AppSwitcherWidget()
+    app_switcher_open_hold_frames = 0
+    app_switcher_open_gesture: str | None = None
+
+    def on_app_selected(title: str) -> None:
+        """Handle an app selection from the switcher — focus the window."""
+        overlay.flash_action(f"app: {title}")
+        panel.set_last_action(f"app seleccionado: {title}")
+        audio_feedback.play_gesture_confirmation()
+        # Alt+Tab to focus the app (Windows-native approach)
+        import pyautogui
+        pyautogui.hotkey("alt", tab=True)
+        app_switcher.close()
+
+    app_switcher.app_selected.connect(on_app_selected)
 
     overlay = GazeOverlay()
     overlay.show()
@@ -1096,6 +1116,67 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                     gaze_text_sel_open_gesture = None
                     gaze_text_sel_open_hold_frames = 0
 
+        # ── App switcher ─────────────────────────────────────────────────
+        # Open with voice command "switcher" or "conmutador".
+        # Close with voice command "cerrar switcher", Escape key, or pinch_close gesture.
+        switcher_command = None
+        if voice_listener is not None:
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text in {"switcher", "conmutador", "open_app_switcher"}:
+                    switcher_command = "open"
+                elif cmd_text in {"cerrar_switcher", "close_app_switcher", "hide_switcher"}:
+                    switcher_command = "close"
+
+        if switcher_command == "open":
+            if not app_switcher.visible:
+                if result.cursor_xy is not None:
+                    app_switcher.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                overlay.flash_action("switcher: abierto")
+                panel.set_last_action("conmutador de aplicaciones abierto")
+
+        elif switcher_command == "close":
+            if app_switcher.visible:
+                overlay.flash_action("switcher: cerrado")
+                panel.set_last_action("conmutador de aplicaciones cerrado")
+                app_switcher.close()
+
+        if app_switcher.visible:
+            # Update dwell based on cursor position
+            app_switcher.update_dwell(result.cursor_xy)
+            # Process blink events for blink-to-select mode
+            if blink_detected:
+                app_switcher.process_blink(blink_detected)
+            # Dismiss on state change to IDLE
+            if result.state == State.IDLE:
+                app_switcher.close()
+        else:
+            # Track open-palm hold to open app switcher (longer hold than emoji)
+            # Use a dedicated gesture: both hands open for 3 seconds
+            if confirmed in {"left_open_palm", "right_open_palm"}:
+                if app_switcher_open_gesture != confirmed:
+                    app_switcher_open_gesture = confirmed
+                    app_switcher_open_hold_frames = 0
+                app_switcher_open_hold_frames += 1
+                frames_needed = int(3000 / (1000 / 30))  # 3 seconds at 30fps
+                if app_switcher_open_hold_frames >= frames_needed:
+                    if result.cursor_xy is not None:
+                        app_switcher.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                    overlay.flash_action("switcher: abierto (gesto)")
+                    panel.set_last_action("conmutador abierto (gesto)")
+                    app_switcher_open_hold_frames = 0
+                    app_switcher_open_gesture = None
+            else:
+                if app_switcher_open_gesture is not None:
+                    app_switcher_open_gesture = None
+                    app_switcher_open_hold_frames = 0
+
+        # Pinch-close gesture dismisses the app switcher
+        if confirmed == "pinch_close" and app_switcher.visible:
+            app_switcher.process_pinch_close()
+            overlay.flash_action("pinch: switcher cerrado")
+            panel.set_last_action("switcher cerrado (pinch)")
+            audio_feedback.play_gesture_confirmation()
+
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state,
                             snap_grid.active)
         panel.set_state(result.state)
@@ -1113,6 +1194,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             # Also close radial menu on pause
             if radial_menu.visible:
                 radial_menu.close()
+            # Also close app switcher on pause
+            if app_switcher.visible:
+                app_switcher.close()
 
         if profile.pointer_control_enabled and result.cursor_xy is not None and result.state != State.IDLE:
             now = time.monotonic()
@@ -1153,6 +1237,12 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             overlay.flash_action("escritura: cerrado (esc)")
             panel.set_last_action("escritura por mirada cerrado (esc)")
             gaze_text_sel.close()
+
+        # Close app switcher on Escape (if visible)
+        if app_switcher.visible and result.fired_action == "escape":
+            overlay.flash_action("switcher: cerrado (esc)")
+            panel.set_last_action("conmutador cerrado (esc)")
+            app_switcher.close()
 
         if result.fired_action:
             label = result.fired_action

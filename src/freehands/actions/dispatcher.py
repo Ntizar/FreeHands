@@ -15,7 +15,8 @@ ACTIONS = {"click", "right_click", "double_click", "escape",
            "volume_up", "volume_down", "volume_mute",
            "drag_start", "drag_end",
            "teclado", "cerrar_teclado",
-           "start_dictation", "stop_dictation"}
+           "start_dictation", "stop_dictation",
+           "app_switcher", "app_switcher_close"}
 
 
 class ActionDispatcher:

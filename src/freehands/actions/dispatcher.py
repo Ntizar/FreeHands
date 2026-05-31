@@ -13,7 +13,8 @@ ACTIONS = {"click", "right_click", "double_click", "escape",
            "undo", "toggle_pause", "resume",
            "show_desktop", "screenshot",
            "volume_up", "volume_down", "volume_mute",
-           "drag_start", "drag_end"}
+           "drag_start", "drag_end",
+           "teclado", "cerrar_teclado"}
 
 
 class ActionDispatcher:

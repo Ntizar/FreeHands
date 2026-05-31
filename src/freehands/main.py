@@ -31,6 +31,7 @@ from .plugins import PluginLoader
 from .ui.audio_feedback import AudioFeedback
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
+from .ui.virtual_keyboard import VirtualKeyboardWidget
 from .voice import VoiceListener
 
 
@@ -281,6 +282,39 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     radial_menu.action_selected.connect(execute_radial_action)
 
+    # ── Virtual keyboard ───────────────────────────────────────────────
+    virtual_kb = VirtualKeyboardWidget()
+    virtual_kb_open_hold_frames = 0
+    virtual_kb_open_gesture: str | None = None
+    kb_typing_buffer: list[str] = []  # chars typed this session
+
+    def on_kb_key(char_or_action: str) -> None:
+        """Handle a key press from the virtual keyboard."""
+        if char_or_action == "shift":
+            return  # handled internally
+        if char_or_action == "backspace":
+            if kb_typing_buffer:
+                kb_typing_buffer.pop()
+            overlay.flash_action("⌫ backspace")
+            panel.set_last_action("backspace")
+            return
+        if char_or_action == "space":
+            kb_typing_buffer.append(" ")
+            overlay.flash_action("espacio")
+            panel.set_last_action("espacio")
+            return
+        if char_or_action == "enter":
+            kb_typing_buffer.append("\n")
+            overlay.flash_action("enter")
+            panel.set_last_action("enter")
+            return
+        # Regular character
+        kb_typing_buffer.append(char_or_action)
+        overlay.flash_action(char_or_action)
+        panel.set_last_action(f"tecla: {char_or_action}")
+
+    virtual_kb.key_pressed.connect(on_kb_key)
+
     overlay = GazeOverlay()
     overlay.show()
 
@@ -356,6 +390,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             fusion.sm.activate()
             overlay.flash_action("voice: resume")
             return
+        # Keyboard commands bypass state check — handled in tick() loop.
+        if action in {"teclado", "cerrar_teclado"}:
+            return
         if fusion.sm.state == State.IDLE:
             overlay.flash_action("voice ignored: paused")
             return
@@ -369,7 +406,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture
+        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture, virtual_kb_open_hold_frames, virtual_kb_open_gesture, kb_typing_buffer
         frame = camera.read()
         if frame is None:
             return
@@ -589,6 +626,58 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                     radial_menu_open_gesture = None
                     radial_menu_open_hold_frames = 0
 
+        # ── Virtual keyboard ───────────────────────────────────────────
+        # Open with a dedicated voice command "teclado" or "keyboard".
+        # Close with Escape key or voice command "cerrar teclado".
+        kb_command = None
+        if voice_listener is not None:
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text in {"teclado", "keyboard", "open_keyboard"}:
+                    kb_command = "open"
+                elif cmd_text in {"cerrar_teclado", "close_keyboard", "hide_keyboard"}:
+                    kb_command = "close"
+
+        if kb_command == "open":
+            if not virtual_kb.visible:
+                if result.cursor_xy is not None:
+                    virtual_kb.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                overlay.flash_action("teclado: abierto")
+                panel.set_last_action("teclado abierto")
+                kb_typing_buffer = []
+        elif kb_command == "close":
+            if virtual_kb.visible:
+                # Flush typed text via pyautogui
+                text = "".join(kb_typing_buffer)
+                if text:
+                    import pyautogui
+                    pyautogui.write(text)
+                    kb_typing_buffer = []
+                overlay.flash_action("teclado: cerrado")
+                panel.set_last_action("teclado cerrado")
+                virtual_kb.close()
+
+        if virtual_kb.visible:
+            # Update dwell based on cursor position
+            virtual_kb.update_dwell(result.cursor_xy)
+            # Dismiss on state change to IDLE
+            if result.state == State.IDLE:
+                text = "".join(kb_typing_buffer)
+                if text:
+                    import pyautogui
+                    pyautogui.write(text)
+                    kb_typing_buffer = []
+                virtual_kb.close()
+        else:
+            # Track open-palm hold to open keyboard (longer hold than radial menu)
+            # Use a double-palm-gesture: both hands open for 2 seconds
+            if confirmed in {"left_open_palm", "right_open_palm"}:
+                # Single palm is radial menu; we need a different trigger
+                pass
+            # Use double-click gesture (blink blink) as keyboard trigger
+            # This is handled by blink_detector already for clicks.
+            # Alternative: use a specific gesture binding.
+            # For now, keyboard opens via voice command only.
+
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state,
                             snap_grid.active)
         panel.set_state(result.state)
@@ -612,6 +701,17 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                 dispatcher.move_pointer(result.cursor_xy)
                 last_pointer_move_at = now
                 last_pointer_xy = result.cursor_xy
+
+        # Close virtual keyboard on Escape (if visible)
+        if virtual_kb.visible and result.fired_action == "escape":
+            text = "".join(kb_typing_buffer)
+            if text:
+                import pyautogui
+                pyautogui.write(text)
+                kb_typing_buffer = []
+            overlay.flash_action("teclado: cerrado (esc)")
+            panel.set_last_action("teclado cerrado (esc)")
+            virtual_kb.close()
 
         if result.fired_action:
             label = result.fired_action

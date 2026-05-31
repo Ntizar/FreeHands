@@ -21,7 +21,8 @@ from .config import (
     TARGET_FPS,
 )
 from .fusion import MultimodalFusion, State, FusionResult, action_for_gesture, decide_channel_priority
-from .gaze import GazeRegressor, GazeTracker, gaze_model_is_usable
+from .gaze import GazeRegressor, GPGazeRegressor, GPGazeModel, GazeTracker, gaze_model_is_usable
+from .gaze.calibration import CalibrationSample, gp_model_has_data, GP_MIN_SAMPLES, GP_RETRAIN_INTERVAL
 from .gaze.dead_zones import DeadZoneClamper
 from .gaze.snap_to_grid import SnapToGrid
 from .gestures import GestureStabilizer, HandTracker, VolumeControl, HandFusion
@@ -272,6 +273,24 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     last_pointer_move_at = 0.0
     last_pointer_xy: tuple[int, int] | None = None
 
+    # ── GP auto-calibration ──────────────────────────────────────────────
+    # Collects (feature_vector → cursor_position) pairs during normal use
+    # and periodically retrains a Gaussian Process regressor.  The GP
+    # runs alongside the Ridge regressor and is used when it has enough
+    # data to produce more accurate predictions (especially for non-linear
+    # gaze mappings that the polynomial model may not capture well).
+    gp_regressor: GPGazeRegressor | None = None
+    if profile.gp_model.n_samples >= GP_MIN_SAMPLES:
+        try:
+            gp_regressor = GPGazeRegressor(profile.gp_model, (screen.width(), screen.height()))
+            print(f"[FreeHands] Loaded GP auto-calibration model ({profile.gp_model.n_samples} samples)")
+        except Exception as exc:
+            print(f"[FreeHands] Could not load GP model ({exc}). Auto-calibration disabled.")
+    gp_sample_buffer: list[CalibrationSample] = []
+    gp_frame_counter = 0
+    gp_last_save = time.monotonic()
+    GP_SAVE_INTERVAL = 300  # seconds — save GP model to profile every 5 min
+
     # ── Radial menu ──────────────────────────────────────────────────────
     radial_menu = RadialMenuWidget()
     radial_menu_open_hold_frames = 0
@@ -495,7 +514,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture, virtual_kb_open_hold_frames, virtual_kb_open_gesture, kb_typing_buffer, gaze_text_sel_open_hold_frames, gaze_text_sel_open_gesture, text_selection_buffer
+        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture, virtual_kb_open_hold_frames, virtual_kb_open_gesture, kb_typing_buffer, gaze_text_sel_open_hold_frames, gaze_text_sel_open_gesture, text_selection_buffer, gp_frame_counter, gp_last_save
         frame = camera.read()
         if frame is None:
             return
@@ -517,6 +536,53 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             cursor = snap_grid.update(cursor, gaze_stable)
         else:
             fine_aim.reset()
+
+        # ── GP auto-calibration sample collection ────────────────────────
+        # When the system is ACTIVE and the cursor is stable, collect
+        # (features → cursor_xy) pairs.  These serve as implicit calibration
+        # data: the user is looking at a UI element and the cursor is there,
+        # so the pair is a valid training sample.
+        if (gp_regressor is not None
+                and fusion.sm.state == State.ACTIVE
+                and cursor is not None
+                and feats is not None):
+            # Only collect when cursor is stable (not during rapid movements)
+            if last_pointer_xy is not None:
+                dx = abs(cursor[0] - last_pointer_xy[0])
+                dy = abs(cursor[1] - last_pointer_xy[1])
+                movement = (dx * dx + dy * dy) ** 0.5
+            else:
+                movement = 999.0  # first sample — accept it
+
+            if movement < 15.0 and feats.confidence > 0.7:
+                sample = CalibrationSample(
+                    features=feats.vector,
+                    target_xy=(float(cursor[0]), float(cursor[1])),
+                )
+                gp_sample_buffer.append(sample)
+                gp_frame_counter += 1
+
+                # Retrain every GP_RETRAIN_INTERVAL frames
+                if gp_frame_counter >= GP_RETRAIN_INTERVAL:
+                    gp_frame_counter = 0
+                    if gp_sample_buffer:
+                        try:
+                            gp_regressor.update(gp_sample_buffer)
+                            gp_sample_buffer.clear()
+                            print(f"[FreeHands] GP retrained with {gp_regressor._gp.n_samples} samples")
+                        except Exception as exc:
+                            print(f"[FreeHands] GP retrain failed ({exc})")
+
+                # Save to profile periodically
+                now = time.monotonic()
+                if now - gp_last_save >= GP_SAVE_INTERVAL:
+                    gp_last_save = now
+                    try:
+                        profile.gp_model = gp_regressor._gp
+                        save_profile(profile)
+                        print(f"[FreeHands] GP model saved ({profile.gp_model.n_samples} samples)")
+                    except Exception as exc:
+                        print(f"[FreeHands] GP save failed ({exc})")
 
         # Hand
         hand_obs = hand_tracker.detect(frame.image)
@@ -1115,6 +1181,15 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     # ── shutdown plumbing ────────────────────────────────────────────────
     def cleanup() -> None:
         timer.stop()
+        # Save any remaining GP samples before shutting down
+        if gp_regressor is not None and gp_sample_buffer:
+            try:
+                gp_regressor.update(gp_sample_buffer)
+                profile.gp_model = gp_regressor._gp
+                save_profile(profile)
+                print(f"[FreeHands] GP model saved on exit ({profile.gp_model.n_samples} samples)")
+            except Exception as exc:
+                print(f"[FreeHands] GP save on exit failed ({exc})")
         camera.stop()
         gaze_tracker.close()
         hand_tracker.close()

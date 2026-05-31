@@ -4,19 +4,27 @@ from .dead_zones import DeadZoneClamper, DeadZoneConfig
 from .kalman_filter import KalmanCursorFilter, KalmanParams
 from .calibration import (
     CalibrationSample,
+    GPGazeModel,
+    GPGazeRegressor,
     GazeRegressor,
     aggregate_gaze_features,
     build_gaze_design_vector,
     calibrate_output_axis,
     fit_gaze_model,
+    fit_gp_model,
+    gp_model_has_data,
+    gp_predict,
     gaze_model_has_signal,
     gaze_model_is_current,
     gaze_model_is_usable,
     gaze_model_weight_norm,
+    update_gp_model,
 )
 from .head_pose import HeadPose, estimate_head_pose, head_pose_to_screen_delta
 
 __all__ = [
+    "GPGazeModel",
+    "GPGazeRegressor",
     "GazeFeatures",
     "GazeDebug",
     "GazeTracker",
@@ -33,10 +41,14 @@ __all__ = [
     "build_gaze_design_vector",
     "calibrate_output_axis",
     "fit_gaze_model",
+    "fit_gp_model",
+    "gp_model_has_data",
+    "gp_predict",
     "gaze_model_has_signal",
     "gaze_model_is_current",
     "gaze_model_is_usable",
     "gaze_model_weight_norm",
+    "update_gp_model",
     "HeadPose",
     "estimate_head_pose",
     "head_pose_to_screen_delta",

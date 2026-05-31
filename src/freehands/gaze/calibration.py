@@ -8,10 +8,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
 from sklearn.linear_model import Ridge
 
 from ..profiles import Profile
-from ..profiles.store import GazeModel
+from ..profiles.store import GPGazeModel, GazeModel
 from .kalman_filter import KalmanCursorFilter, KalmanParams
 
 
@@ -237,3 +239,213 @@ def fit_gaze_model(samples: list[CalibrationSample], alpha: float = 0.5) -> Gaze
 def update_profile_with_gaze(profile: Profile, model: GazeModel) -> Profile:
     profile.gaze_model = model
     return profile
+
+
+# ── Gaussian Process auto-calibration ──────────────────────────────────────
+
+# Maximum number of samples to keep in the GP training set.
+# Using a sliding window prevents unbounded memory growth and keeps the GP
+# focused on recent calibration data (which matters as the user's posture
+# or lighting changes over time).
+GP_MAX_SAMPLES = 200
+
+# Minimum samples required before the GP can produce predictions.
+GP_MIN_SAMPLES = 8
+
+# How often (in frames) to retrain the GP with accumulated samples.
+GP_RETRAIN_INTERVAL = 30  # frames
+
+
+def _build_kernel(kernel_type: str = "RBF", lengthscale: float = 1.0,
+                  noise_level: float = 0.1) -> RBF | Matern | ConstantKernel:
+    """Build a scikit-learn kernel from named parameters."""
+    if kernel_type == "Matern":
+        return Matern(length_scale=lengthscale, nu=1.5)
+    if kernel_type == "Constant":
+        return ConstantKernel(constant_value=lengthscale)
+    # Default: RBF (squared exponential)
+    return RBF(length_scale=lengthscale)
+
+
+def fit_gp_model(samples: list[CalibrationSample],
+                 kernel_type: str = "RBF",
+                 lengthscale: float = 1.0,
+                 noise_level: float = 0.1,
+                 alpha: float = 1e-6) -> GPGazeModel:
+    """Train a Gaussian Process regressor and return a serialisable :class:`GPGazeModel`.
+
+    Trains two independent GPs (one per axis) using the design vectors from
+    the calibration samples.  Stores the training data so the model can be
+    serialised and later reconstituted.
+    """
+    if len(samples) < GP_MIN_SAMPLES:
+        raise ValueError(f"Need at least {GP_MIN_SAMPLES} calibration samples for GP regression")
+
+    X = np.stack([
+        build_gaze_design_vector(s.features, CURRENT_GAZE_FEATURE_VERSION)
+        for s in samples
+    ])
+    y = np.array([s.target_xy for s in samples])
+
+    kernel = _build_kernel(kernel_type, lengthscale, noise_level)
+    gp_x = GaussianProcessRegressor(kernel=kernel, alpha=alpha, n_restarts_optimizer=3)
+    gp_y = GaussianProcessRegressor(kernel=kernel, alpha=alpha, n_restarts_optimizer=3)
+    gp_x.fit(X, y[:, 0])
+    gp_y.fit(X, y[:, 1])
+
+    return GPGazeModel(
+        kernel_type=kernel_type,
+        lengthscale=lengthscale,
+        noise_level=noise_level,
+        alpha=alpha,
+        feature_version=CURRENT_GAZE_FEATURE_VERSION,
+        training_features=X.tolist(),
+        training_targets_x=[[float(v)] for v in gp_x.predict(X).tolist()],
+        training_targets_y=[[float(v)] for v in gp_y.predict(X).tolist()],
+        n_samples=len(samples),
+    )
+
+
+def update_gp_model(gp: GPGazeModel, new_samples: list[CalibrationSample]) -> GPGazeModel:
+    """Add new calibration samples and retrain the GP.
+
+    Keeps the total training set bounded at GP_MAX_SAMPLES by dropping
+    the oldest samples when the limit is exceeded.
+    """
+    existing_X = np.array(gp.training_features, dtype=float)
+    existing_yx = np.array(gp.training_targets_x, dtype=float).flatten()
+    existing_yy = np.array(gp.training_targets_y, dtype=float).flatten()
+
+    new_X = np.stack([
+        build_gaze_design_vector(s.features, CURRENT_GAZE_FEATURE_VERSION)
+        for s in new_samples
+    ])
+    new_yx = np.array([s.target_xy[0] for s in new_samples])
+    new_yy = np.array([s.target_xy[1] for s in new_samples])
+
+    # Append new data
+    all_X = np.concatenate([existing_X, new_X], axis=0)
+    all_yx = np.concatenate([existing_yx, new_yx])
+    all_yy = np.concatenate([existing_yy, new_yy])
+
+    # Keep only the most recent samples (sliding window)
+    if all_X.shape[0] > GP_MAX_SAMPLES:
+        start = all_X.shape[0] - GP_MAX_SAMPLES
+        all_X = all_X[start:]
+        all_yx = all_yx[start:]
+        all_yy = all_yy[start:]
+
+    kernel = _build_kernel(gp.kernel_type, gp.lengthscale, gp.noise_level)
+    gp_x = GaussianProcessRegressor(kernel=kernel, alpha=gp.alpha, n_restarts_optimizer=3)
+    gp_y = GaussianProcessRegressor(kernel=kernel, alpha=gp.alpha, n_restarts_optimizer=3)
+    gp_x.fit(all_X, all_yx)
+    gp_y.fit(all_X, all_yy)
+
+    return GPGazeModel(
+        kernel_type=gp.kernel_type,
+        lengthscale=gp.lengthscale,
+        noise_level=gp.noise_level,
+        alpha=gp.alpha,
+        feature_version=gp.feature_version,
+        training_features=all_X.tolist(),
+        training_targets_x=[[float(v)] for v in gp_x.predict(all_X).tolist()],
+        training_targets_y=[[float(v)] for v in gp_y.predict(all_X).tolist()],
+        n_samples=len(all_X),
+    )
+
+
+def gp_predict(gp: GPGazeModel, features: np.ndarray) -> tuple[int, int] | None:
+    """Predict screen coordinates from a feature vector using the GP model.
+
+    Returns (x, y) in screen pixels, clamped to the screen bounds.
+    Returns None if the GP has insufficient training data.
+    """
+    if gp.n_samples < GP_MIN_SAMPLES:
+        return None
+
+    X = np.array(gp.training_features, dtype=float)
+    yx = np.array(gp.training_targets_x, dtype=float).flatten()
+    yy = np.array(gp.training_targets_y, dtype=float).flatten()
+
+    design = build_gaze_design_vector(features, gp.feature_version)
+    design = design.reshape(1, -1)
+
+    kernel = _build_kernel(gp.kernel_type, gp.lengthscale, gp.noise_level)
+    gp_x = GaussianProcessRegressor(kernel=kernel, alpha=gp.alpha, n_restarts_optimizer=0)
+    gp_y = GaussianProcessRegressor(kernel=kernel, alpha=gp.alpha, n_restarts_optimizer=0)
+    gp_x.fit(X, yx)
+    gp_y.fit(X, yy)
+
+    pred_x = float(gp_x.predict(design)[0])
+    pred_y = float(gp_y.predict(design)[0])
+
+    return int(round(pred_x)), int(round(pred_y))
+
+
+def gp_model_has_data(gp: GPGazeModel) -> bool:
+    """Check if the GP model has enough training data to produce predictions."""
+    return gp.n_samples >= GP_MIN_SAMPLES
+
+
+class GPGazeRegressor:
+    """Predicts (x, y) pixels using a Gaussian Process regressor.
+
+    Wraps a :class:`GPGazeModel` and provides frame-by-frame prediction
+    with Kalman-style smoothing, mirroring the :class:`GazeRegressor` API.
+    """
+
+    def __init__(
+        self,
+        gp: GPGazeModel,
+        screen_size: tuple[int, int],
+        *,
+        kalman_params: KalmanParams | None = None,
+    ) -> None:
+        self._gp = gp
+        self._screen_w, self._screen_h = screen_size
+        self._kalman = KalmanCursorFilter(kalman_params)
+        # Pre-fit the GPs for fast prediction (skip optimizer on every call)
+        self._gp_x: GaussianProcessRegressor | None = None
+        self._gp_y: GaussianProcessRegressor | None = None
+        self._fit_gps()
+
+    def _fit_gps(self) -> None:
+        """Fit temporary GPs from stored training data for prediction."""
+        if self._gp.n_samples < GP_MIN_SAMPLES:
+            self._gp_x = None
+            self._gp_y = None
+            return
+        X = np.array(self._gp.training_features, dtype=float)
+        yx = np.array(self._gp.training_targets_x, dtype=float).flatten()
+        yy = np.array(self._gp.training_targets_y, dtype=float).flatten()
+        kernel = _build_kernel(self._gp.kernel_type, self._gp.lengthscale, self._gp.noise_level)
+        self._gp_x = GaussianProcessRegressor(kernel=kernel, alpha=self._gp.alpha, n_restarts_optimizer=0)
+        self._gp_y = GaussianProcessRegressor(kernel=kernel, alpha=self._gp.alpha, n_restarts_optimizer=0)
+        self._gp_x.fit(X, yx)
+        self._gp_y.fit(X, yy)
+
+    @property
+    def trained(self) -> bool:
+        return self._gp_x is not None and self._gp_y is not None
+
+    def predict(self, features: np.ndarray) -> tuple[int, int] | None:
+        if not self.trained:
+            return None
+        design = build_gaze_design_vector(
+            np.asarray(features, dtype=float).reshape(-1),
+            self._gp.feature_version,
+        ).reshape(1, -1)
+        try:
+            x = float(self._gp_x.predict(design)[0])
+            y = float(self._gp_y.predict(design)[0])
+        except Exception:
+            return None
+        x = max(0, min(self._screen_w - 1, x))
+        y = max(0, min(self._screen_h - 1, y))
+        smoothed = self._kalman.update((x, y))
+        return int(round(smoothed[0])), int(round(smoothed[1]))
+
+    def update(self, new_samples: list[CalibrationSample]) -> None:
+        """Add new calibration samples and retrain the GP."""
+        self._gp = update_gp_model(self._gp, new_samples)
+        self._fit_gps()

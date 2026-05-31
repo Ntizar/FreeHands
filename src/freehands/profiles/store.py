@@ -210,6 +210,24 @@ class GazeModel(BaseModel):
     personal_offset: dict[str, float] = Field(default_factory=lambda: {"x": 0.0, "y": 0.0})
 
 
+class GPGazeModel(BaseModel):
+    """Serializable Gaussian Process model for gaze calibration.
+
+    Stores kernel hyperparameters and a subset of training samples so the
+    GP can be reconstituted (retrained) from JSON.  The GP itself is not
+    serialisable, so we persist the ingredients and rebuild on load.
+    """
+    kernel_type: str = "RBF"          # RBF, Matern, ConstantKernel
+    lengthscale: float = 1.0
+    noise_level: float = 0.1
+    alpha: float = 1e-6               # regularisation
+    feature_version: int = 1
+    training_features: list[list[float]] = Field(default_factory=list)  # X
+    training_targets_x: list[list[float]] = Field(default_factory=list)  # y_x
+    training_targets_y: list[list[float]] = Field(default_factory=list)  # y_y
+    n_samples: int = 0                # quick check that data is present
+
+
 class Profile(BaseModel):
     user_id: str
     calibration_date: str = Field(default_factory=lambda: date.today().isoformat())
@@ -217,6 +235,7 @@ class Profile(BaseModel):
     gesture_calibrated_at: str | None = None
     gesture_calibration_results: dict[str, dict[str, float | int | bool]] = Field(default_factory=dict)
     gaze_model: GazeModel = Field(default_factory=GazeModel)
+    gp_model: GPGazeModel = Field(default_factory=GPGazeModel)
     camera_index: int = CAMERA_INDEX
     swap_handedness: bool = False
     pointer_control_enabled: bool = True

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from freehands.gaze.calibration import (
     CURRENT_GAZE_FEATURE_VERSION,
@@ -9,12 +10,17 @@ from freehands.gaze.calibration import (
     build_gaze_design_vector,
     calibrate_output_axis,
     fit_gaze_model,
+    fit_gp_model,
+    gp_model_has_data,
+    gp_predict,
     gaze_model_has_signal,
     gaze_model_is_current,
     gaze_model_is_usable,
     gaze_model_weight_norm,
+    update_gp_model,
+    GP_MIN_SAMPLES,
 )
-from freehands.profiles.store import GazeModel
+from freehands.profiles.store import GPGazeModel, GazeModel
 
 
 def test_build_gaze_design_vector_keeps_legacy_features() -> None:
@@ -68,7 +74,6 @@ def test_fit_gaze_model_marks_current_feature_version() -> None:
     ]
     model = fit_gaze_model(samples)
     assert model.feature_version == CURRENT_GAZE_FEATURE_VERSION
-    # v5 uses polynomial features: 6 linear + 6 squared + 15 cross = 27
     assert len(model.weights_x) == 27
     assert len(model.weights_y) == 27
     assert model.type == "polynomial_regression"
@@ -85,9 +90,6 @@ def test_current_gaze_model_invalidates_v3_eye_heavy_profiles() -> None:
 
 
 def test_fit_gaze_model_can_expand_small_feature_ranges_to_screen_space() -> None:
-    """Polynomial model with stronger regularization produces more conservative but still
-    meaningful expansion — with only 4 samples it won't span the full screen, but it
-    should still track the feature ordering."""
     samples = [
         CalibrationSample(np.array([0.42, 0.48, 0.58, 0.47, 0.02, 0.00]), (120.0, 120.0)),
         CalibrationSample(np.array([0.46, 0.47, 0.54, 0.46, 0.01, -0.01]), (640.0, 160.0)),
@@ -97,12 +99,8 @@ def test_fit_gaze_model_can_expand_small_feature_ranges_to_screen_space() -> Non
     model = fit_gaze_model(samples)
     regressor = GazeRegressor(model, (1920, 1080))
     outputs = np.array([regressor.predict(sample.features) for sample in samples], dtype=float)
-    # With 4 samples and polynomial features (27), regularization is stronger, so expansion
-    # is more conservative. But the model should still produce ordered outputs matching
-    # the calibration target ordering.
-    assert np.ptp(outputs[:, 0]) > 100  # meaningful expansion
-    # Verify outputs are monotonically increasing (matching target ordering)
-    assert outputs[0, 0] < outputs[-1, 0]  # left-to-right ordering preserved
+    assert np.ptp(outputs[:, 0]) > 100
+    assert outputs[0, 0] < outputs[-1, 0]
 
 
 def test_fit_gaze_model_tracks_head_pose_when_eye_signal_is_small() -> None:
@@ -152,14 +150,11 @@ def test_expand_polynomial_produces_27_features_from_6() -> None:
     raw = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     expanded = _expand_polynomial(raw, degree=2)
     assert expanded.shape[0] == 27
-    # First 6 = linear (unchanged)
     np.testing.assert_allclose(expanded[:6], raw)
-    # Next 6 = squared
     np.testing.assert_allclose(expanded[6:12], raw ** 2)
-    # Remaining 15 = cross terms
-    assert expanded[12] == 1.0 * 2.0   # a·b
-    assert expanded[13] == 1.0 * 3.0   # a·c
-    assert expanded[26] == 5.0 * 6.0   # e·f (last)
+    assert expanded[12] == 1.0 * 2.0
+    assert expanded[13] == 1.0 * 3.0
+    assert expanded[26] == 5.0 * 6.0
 
 
 def test_build_gaze_design_vector_returns_27_for_v5() -> None:
@@ -176,7 +171,6 @@ def test_build_gaze_design_vector_returns_6_for_legacy() -> None:
 
 
 def test_gaze_regressor_handles_legacy_model_with_polynomial_input() -> None:
-    """Old linear model (6 weights) should still work with new 6-d input."""
     model = GazeModel(
         feature_version=LEGACY_GAZE_FEATURE_VERSION,
         weights_x=[100.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -184,3 +178,126 @@ def test_gaze_regressor_handles_legacy_model_with_polynomial_input() -> None:
     )
     regressor = GazeRegressor(model, (500, 500))
     assert regressor.predict(np.array([1.2, 2.4, 0.0, 0.0, 0.0, 0.0])) == (120, 240)
+
+
+# ── Gaussian Process auto-calibration tests ──────────────────────────────
+
+def _make_gp_samples(n: int = 20) -> list[CalibrationSample]:
+    """Generate deterministic calibration samples for GP testing."""
+    samples = []
+    for i in range(n):
+        x = 0.3 + (i % 5) * 0.1
+        y = 0.4 + (i // 5) * 0.1
+        sx = 100 + i * 80
+        sy = 100 + i * 40
+        samples.append(CalibrationSample(
+            features=np.array([x, y, x + 0.05, y + 0.05, 0.0, 0.0]),
+            target_xy=(float(sx), float(sy)),
+        ))
+    return samples
+
+
+def test_gp_model_requires_minimum_samples() -> None:
+    from freehands.gaze.calibration import GP_MIN_SAMPLES
+    samples = _make_gp_samples(GP_MIN_SAMPLES - 1)
+    with pytest.raises(ValueError, match="at least"):
+        fit_gp_model(samples)
+
+
+def test_fit_gp_model_returns_serialisable_model() -> None:
+    from freehands.profiles.store import GPGazeModel
+    samples = _make_gp_samples(20)
+    model = fit_gp_model(samples)
+    assert isinstance(model, GPGazeModel)
+    assert model.n_samples == 20
+    assert model.feature_version == CURRENT_GAZE_FEATURE_VERSION
+    assert len(model.training_features) == 20
+    assert len(model.training_targets_x) == 20
+    assert len(model.training_targets_y) == 20
+
+
+def test_gp_regressor_predicts_with_fitted_model() -> None:
+    from freehands.gaze.calibration import GPGazeRegressor
+    samples = _make_gp_samples(20)
+    gp = fit_gp_model(samples)
+    regressor = GPGazeRegressor(gp, (1920, 1080))
+    assert regressor.trained
+    result = regressor.predict(samples[0].features)
+    assert result is not None
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert 0 <= result[0] < 1920
+    assert 0 <= result[1] < 1080
+
+
+def test_gp_regressor_returns_none_when_untrained() -> None:
+    from freehands.gaze.calibration import GPGazeRegressor
+    gp = GPGazeModel(n_samples=0)
+    regressor = GPGazeRegressor(gp, (1920, 1080))
+    assert not regressor.trained
+    assert regressor.predict(np.array([0.5, 0.5, 0.5, 0.5, 0.0, 0.0])) is None
+
+
+def test_gp_update_adds_new_samples() -> None:
+    samples = _make_gp_samples(20)
+    gp = fit_gp_model(samples)
+    assert gp.n_samples == 20
+    new_samples = _make_gp_samples(5)
+    for s in new_samples:
+        s.target_xy = (s.target_xy[0] + 500, s.target_xy[1] + 300)
+    gp_updated = update_gp_model(gp, new_samples)
+    assert gp_updated.n_samples == 25
+
+
+def test_gp_update_respects_max_samples_window() -> None:
+    from freehands.gaze.calibration import GP_MAX_SAMPLES
+    samples = _make_gp_samples(150)
+    gp = fit_gp_model(samples)
+    new_samples = _make_gp_samples(100)
+    gp_updated = update_gp_model(gp, new_samples)
+    assert gp_updated.n_samples <= GP_MAX_SAMPLES
+
+
+def test_gp_model_has_data() -> None:
+    assert not gp_model_has_data(GPGazeModel(n_samples=0))
+    assert not gp_model_has_data(GPGazeModel(n_samples=GP_MIN_SAMPLES - 1))
+    assert gp_model_has_data(GPGazeModel(n_samples=GP_MIN_SAMPLES))
+    assert gp_model_has_data(GPGazeModel(n_samples=100))
+
+
+def test_gp_regressor_update_method() -> None:
+    from freehands.gaze.calibration import GPGazeRegressor
+    samples = _make_gp_samples(20)
+    gp = fit_gp_model(samples)
+    regressor = GPGazeRegressor(gp, (1920, 1080))
+    assert regressor.trained
+    new_samples = _make_gp_samples(5)
+    regressor.update(new_samples)
+    assert regressor._gp.n_samples == 25
+
+
+def test_gp_predict_module_function() -> None:
+    samples = _make_gp_samples(20)
+    gp = fit_gp_model(samples)
+    result = gp_predict(gp, samples[0].features)
+    assert result is not None
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+
+
+def test_gp_predict_returns_none_with_insufficient_data() -> None:
+    gp = GPGazeModel(n_samples=5)
+    assert gp_predict(gp, np.array([0.5] * 6)) is None
+
+
+def test_gp_model_serialisable_to_dict() -> None:
+    """Ensure GPGazeModel can be round-tripped through JSON."""
+    samples = _make_gp_samples(10)
+    gp = fit_gp_model(samples)
+    data = gp.model_dump()
+    assert "training_features" in data
+    assert "n_samples" in data
+    assert data["n_samples"] == 10
+    gp2 = GPGazeModel.model_validate(data)
+    assert gp2.n_samples == 10
+    assert len(gp2.training_features) == 10

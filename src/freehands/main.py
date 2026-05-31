@@ -33,6 +33,7 @@ from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
 from .ui.virtual_keyboard import VirtualKeyboardWidget
 from .ui.emoji_overlay import EmojiOverlayWidget
+from .ui.gaze_text_selector import GazeTextSelectorWidget
 from .voice import VoiceListener
 
 
@@ -333,6 +334,22 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     virtual_kb.key_pressed.connect(on_kb_key)
     virtual_kb.layout_changed.connect(on_kb_layout_changed)
 
+    # ── Gaze text selector (OCR-based text region typing) ──────────────────
+    gaze_text_sel = GazeTextSelectorWidget()
+    gaze_text_sel_open_hold_frames = 0
+    gaze_text_sel_open_gesture: str | None = None
+    text_selection_buffer: list[str] = []  # chars typed this session
+
+    def on_text_region_selected(region) -> None:
+        """Handle a text region selection from the gaze text selector."""
+        overlay.flash_action(f"region: {region.width}x{region.height}")
+        panel.set_last_action(f"region de texto seleccionada")
+        audio_feedback.play_gesture_confirmation()
+        gaze_text_sel._state.mode = type(gaze_text_sel._state.mode).TYPING  # type: ignore[arg-type]
+        gaze_text_sel.mode_changed.emit("typing")
+
+    gaze_text_sel.region_selected.connect(on_text_region_selected)
+
     # ── Emoji overlay ────────────────────────────────────────────────────
     emoji_overlay = EmojiOverlayWidget()
     emoji_overlay_open_hold_frames = 0
@@ -439,7 +456,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture, virtual_kb_open_hold_frames, virtual_kb_open_gesture, kb_typing_buffer
+        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture, virtual_kb_open_hold_frames, virtual_kb_open_gesture, kb_typing_buffer, gaze_text_sel_open_hold_frames, gaze_text_sel_open_gesture, text_selection_buffer
         frame = camera.read()
         if frame is None:
             return
@@ -786,6 +803,69 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
                     emoji_overlay_open_gesture = None
                     emoji_overlay_open_hold_frames = 0
 
+        # ── Gaze text selector ───────────────────────────────────────────
+        # Open with voice command "gaze typing" or "escribir texto".
+        # Close with voice command "cerrar escritura" or Escape key.
+        text_sel_command = None
+        if voice_listener is not None:
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text in {"gaze_typing", "escribir", "escribir_texto", "open_gaze_typing"}:
+                    text_sel_command = "open"
+                elif cmd_text in {"cerrar_escritura", "close_gaze_typing", "hide_gaze_typing"}:
+                    text_sel_command = "close"
+
+        if text_sel_command == "open":
+            if not gaze_text_sel.visible:
+                if result.cursor_xy is not None:
+                    gaze_text_sel.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                overlay.flash_action("escritura: abierto")
+                panel.set_last_action("escritura por mirada abierto")
+                text_selection_buffer = []
+        elif text_sel_command == "close":
+            if gaze_text_sel.visible:
+                text = "".join(text_selection_buffer)
+                if text:
+                    import pyautogui
+                    pyautogui.write(text)
+                    text_selection_buffer = []
+                overlay.flash_action("escritura: cerrado")
+                panel.set_last_action("escritura por mirada cerrado")
+                gaze_text_sel.close()
+
+        if gaze_text_sel.visible:
+            # Update dwell based on cursor position
+            gaze_text_sel.update_dwell(result.cursor_xy)
+            # Process blink events for blink-to-select mode
+            if blink_detected:
+                gaze_text_sel.process_blink(blink_detected)
+            # Dismiss on state change to IDLE
+            if result.state == State.IDLE:
+                text = "".join(text_selection_buffer)
+                if text:
+                    import pyautogui
+                    pyautogui.write(text)
+                    text_selection_buffer = []
+                gaze_text_sel.close()
+        else:
+            # Track open-palm hold to open gaze text selector
+            if confirmed in {"left_open_palm", "right_open_palm"}:
+                if gaze_text_sel_open_gesture != confirmed:
+                    gaze_text_sel_open_gesture = confirmed
+                    gaze_text_sel_open_hold_frames = 0
+                gaze_text_sel_open_hold_frames += 1
+                frames_needed = int(2000 / (1000 / 30))  # 2 seconds at 30fps
+                if gaze_text_sel_open_hold_frames >= frames_needed:
+                    if result.cursor_xy is not None:
+                        gaze_text_sel.open_at(result.cursor_xy[0], result.cursor_xy[1])
+                    overlay.flash_action("escritura: abierto (gesto)")
+                    panel.set_last_action("escritura por mirada abierto (gesto)")
+                    gaze_text_sel_open_hold_frames = 0
+                    gaze_text_sel_open_gesture = None
+            else:
+                if gaze_text_sel_open_gesture is not None:
+                    gaze_text_sel_open_gesture = None
+                    gaze_text_sel_open_hold_frames = 0
+
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state,
                             snap_grid.active)
         panel.set_state(result.state)
@@ -826,6 +906,17 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             overlay.flash_action("emojis: cerrado (esc)")
             panel.set_last_action("emojis cerrado (esc)")
             emoji_overlay.close()
+
+        # Close gaze text selector on Escape (if visible)
+        if gaze_text_sel.visible and result.fired_action == "escape":
+            text = "".join(text_selection_buffer)
+            if text:
+                import pyautogui
+                pyautogui.write(text)
+                text_selection_buffer = []
+            overlay.flash_action("escritura: cerrado (esc)")
+            panel.set_last_action("escritura por mirada cerrado (esc)")
+            gaze_text_sel.close()
 
         if result.fired_action:
             label = result.fired_action

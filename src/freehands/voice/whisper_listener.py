@@ -44,6 +44,8 @@ COMMAND_PHRASES: dict[str, tuple[str, ...]] = {
     "teclado": ("teclado", "abrir teclado", "keyboard", "abre teclado", "teclado virtual"),
     "cerrar_emojis": ("cerrar emojis", "cierra emojis", "hide emoji", "close emoji", "ocultar emojis"),
     "emojis": ("emojis", "abrir emojis", "emoji", "abrir emoji"),
+    "gaze_typing": ("gaze typing", "escribir", "escribir texto", "escritura", "escribir con mirada", "open gaze typing"),
+    "cerrar_escritura": ("cerrar escritura", "cierra escritura", "hide gaze typing", "close gaze typing", "ocultar escritura"),
 }
 
 

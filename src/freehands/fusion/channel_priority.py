@@ -12,11 +12,21 @@ Priority rules
 4. When both channels propose the *same* action, gesture wins (it is the
    primary input modality for FreeHands).
 
+Fusion modes
+------------
+- **AND** (default): voice actions for pointer/gesture operations only fire
+  when gaze is also present and stable.
+- **OR**: any channel can activate an action. If voice proposes a pointer
+  action and gaze is present (even if unstable), the action fires.
+  When both channels propose *different* actions, the one with higher
+  confidence wins (intention prioritisation).
+
 Each function returns ``(winner_action, winner_source)`` where ``source`` is
 ``"gesture"``, ``"voice"``, or ``None`` (no action).
 """
 from __future__ import annotations
 
+from enum import Enum, auto
 from dataclasses import dataclass
 
 # Actions that are system-level (no spatial context needed).
@@ -41,6 +51,12 @@ STATE_ACTIONS: frozenset[str] = frozenset({
 })
 
 
+class FusionMode(Enum):
+    """Fusion mode controlling how modalities interact."""
+    AND = auto()   # voice needs stable gaze to fire pointer actions
+    OR = auto()    # any channel can fire; confidence breaks ties
+
+
 @dataclass(frozen=True)
 class ChannelDecision:
     """Result of the channel prioritisation logic."""
@@ -56,6 +72,7 @@ def decide_channel_priority(
     *,
     gesture_confidence: float = 1.0,
     voice_confidence: float = 1.0,
+    mode: FusionMode = FusionMode.AND,
 ) -> ChannelDecision:
     """Resolve a potential conflict between gesture and voice.
 
@@ -66,6 +83,9 @@ def decide_channel_priority(
        b. Gesture wins for pointer/gesture actions (click, scroll, zoom).
        c. If both propose the *same* action, gesture wins (primary modality).
        d. If both propose different non-system actions, gesture wins.
+
+    In OR mode, when both channels propose different actions, the one with
+    higher confidence wins (intention prioritisation).
     """
     # ── No conflict: single source ───────────────────────────────────────
     if gesture_action is None and voice_action is None:
@@ -91,8 +111,36 @@ def decide_channel_priority(
         # Voice wins over gesture system commands (shouldn't happen, but safety).
         return ChannelDecision(voice_action, "voice", gesture_confidence, voice_confidence)
 
-    # Both are regular actions — gesture wins (has spatial context).
+    if mode == FusionMode.OR:
+        # OR mode: confidence breaks the tie (intention prioritisation).
+        if voice_confidence > gesture_confidence:
+            return ChannelDecision(voice_action, "voice", gesture_confidence, voice_confidence)
+        # Gesture wins by default (or equal confidence).
+        return ChannelDecision(gesture_action, "gesture", gesture_confidence, voice_confidence)
+
+    # AND mode (default): gesture wins for regular actions (has spatial context).
     return ChannelDecision(gesture_action, "gesture", gesture_confidence, voice_confidence)
+
+
+def decide_or_fusion(
+    gesture_action: str | None,
+    voice_action: str | None,
+    *,
+    gesture_confidence: float = 1.0,
+    voice_confidence: float = 1.0,
+) -> ChannelDecision:
+    """OR-mode fusion: any channel can activate, confidence breaks ties.
+
+    In OR mode, if either channel proposes an action, it fires. When both
+    propose different actions, the one with higher confidence wins
+    (intention prioritisation).
+    """
+    return decide_channel_priority(
+        gesture_action, voice_action,
+        gesture_confidence=gesture_confidence,
+        voice_confidence=voice_confidence,
+        mode=FusionMode.OR,
+    )
 
 
 def voice_should_bypass_fusion(action: str | None) -> bool:

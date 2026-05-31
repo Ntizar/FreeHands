@@ -131,11 +131,21 @@ class GazeStabilityChecker:
 class MultimodalFusion:
     """Owns the state machine, dwell logic and binding lookup."""
 
-    def __init__(self, profile: Profile) -> None:
+    def __init__(
+        self,
+        profile: Profile,
+        *,
+        fusion_mode: str = "AND",
+        gesture_confidence: float = 1.0,
+        voice_confidence: float = 1.0,
+    ) -> None:
         self.profile = profile
         self.sm = StateMachine(dwell_ms=profile.dwell_time_ms)
         self.gaze_stable = GazeStabilityChecker()
         self._last_action_at = 0.0
+        self.fusion_mode = fusion_mode
+        self.gesture_confidence = gesture_confidence
+        self.voice_confidence = voice_confidence
 
     def step_and_voice(
         self,
@@ -206,17 +216,15 @@ class MultimodalFusion:
                     head_coarse_dy=head_pose.coarse_dy,
                 )
 
-        # ── 2. Voice+gaze AND fusion (only for non-blink, non-gesture actions) ─
+        # ── 2. Voice+gaze multimodal fusion ──────────────────────────────
         # Blink events and gesture-mapped actions are already handled above.
         # Voice commands for pointer/gesture actions need gaze confirmation.
         if voice_action and not result.fired_action:
             if voice_action in AND_FUSION_ACTIONS:
-                # AND fusion: voice alone is not enough — need gaze too.
                 if cursor_xy is not None and self.sm.state != State.IDLE:
-                    # Gaze present and system active — check stability.
-                    gaze_ok = self.gaze_stable.peek()
-                    if gaze_ok:
-                        # Both voice AND gaze present → fire the action.
+                    # Gaze present and system active.
+                    if self.fusion_mode == "OR":
+                        # OR mode: fire if gaze is present (no stability required).
                         self._last_action_at = time.monotonic()
                         self.sm.trigger_cooldown()
                         return FusionResult(
@@ -230,17 +238,34 @@ class MultimodalFusion:
                             gaze_confirmed=True,
                         )
                     else:
-                        # Gaze present but unstable → return partial result.
-                        return FusionResult(
-                            cursor_xy=result.cursor_xy,
-                            state=self.sm.state,
-                            dwell_progress=self.sm.dwell_progress,
-                            fired_action=None,
-                            blink=False,
-                            blink_event=None,
-                            voice_action=voice_action,
-                            gaze_confirmed=False,
-                        )
+                        # AND mode: need stable gaze.
+                        gaze_ok = self.gaze_stable.peek()
+                        if gaze_ok:
+                            # Both voice AND gaze present → fire the action.
+                            self._last_action_at = time.monotonic()
+                            self.sm.trigger_cooldown()
+                            return FusionResult(
+                                cursor_xy=result.cursor_xy,
+                                state=self.sm.state,
+                                dwell_progress=0.0,
+                                fired_action=voice_action,
+                                blink=False,
+                                blink_event=None,
+                                voice_action=voice_action,
+                                gaze_confirmed=True,
+                            )
+                        else:
+                            # Gaze present but unstable → return partial result.
+                            return FusionResult(
+                                cursor_xy=result.cursor_xy,
+                                state=self.sm.state,
+                                dwell_progress=self.sm.dwell_progress,
+                                fired_action=None,
+                                blink=False,
+                                blink_event=None,
+                                voice_action=voice_action,
+                                gaze_confirmed=False,
+                            )
                 else:
                     # No gaze or idle → voice alone cannot fire pointer actions.
                     return FusionResult(

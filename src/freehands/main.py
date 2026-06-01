@@ -30,6 +30,7 @@ from .gestures.face_tracker import FaceTracker, FacialObservation
 from .profiles import GestureThreshold, load_profile, save_profile
 from .plugins import PluginLoader
 from .ui.audio_feedback import AudioFeedback
+from .ui.magnifier import MagnifierWidget
 from .ui.overlay import FreeHandsControlPanel, GazeOverlay
 from .ui.radial_menu import MENU_OPEN_DURATION_MS, RadialMenuWidget
 from .ui.virtual_keyboard import VirtualKeyboardWidget
@@ -419,6 +420,13 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
     overlay = GazeOverlay()
     overlay.show()
 
+    # ── Magnifier ────────────────────────────────────────────────────────
+    # Circular magnifying glass that enlarges the desktop around the gaze
+    # cursor, helping the user read small text. Toggle with "zoom in"/"zoom
+    # out" voice commands or pinch gestures.
+    magnifier = MagnifierWidget(zoom_factor=2.0, radius=100, offset_y=-140)
+    magnifier_visible = False
+
     fusion.sm.activate()  # start in ACTIVE; open palm toggles back to IDLE
 
     panel = FreeHandsControlPanel(user_id)
@@ -521,6 +529,22 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         # Dictation commands are handled in tick() loop.
         if action in {"start_dictation", "stop_dictation"}:
             return
+        # Magnifier toggle via voice ("zoom in" / "zoom out")
+        if action in {"zoom_in", "zoom_out"}:
+            nonlocal magnifier_visible
+            if action == "zoom_in" and not magnifier_visible:
+                magnifier_visible = True
+                magnifier.show()
+                overlay.flash_action("zoom: activado")
+                panel.set_last_action("lupa activada")
+                audio_feedback.play_gesture_confirmation()
+            elif action == "zoom_out" and magnifier_visible:
+                magnifier_visible = False
+                magnifier.hide()
+                overlay.flash_action("zoom: desactivado")
+                panel.set_last_action("lupa desactivada")
+                audio_feedback.play_gesture_confirmation()
+            return
         if fusion.sm.state == State.IDLE:
             overlay.flash_action("voice ignored: paused")
             return
@@ -534,7 +558,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
     # ── per-tick processing ──────────────────────────────────────────────
     def tick() -> None:
-        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture, virtual_kb_open_hold_frames, virtual_kb_open_gesture, kb_typing_buffer, gaze_text_sel_open_hold_frames, gaze_text_sel_open_gesture, text_selection_buffer, gp_frame_counter, gp_last_save
+        nonlocal last_pointer_move_at, last_pointer_xy, radial_menu_open_hold_frames, radial_menu_open_gesture, virtual_kb_open_hold_frames, virtual_kb_open_gesture, kb_typing_buffer, gaze_text_sel_open_hold_frames, gaze_text_sel_open_gesture, text_selection_buffer, gp_frame_counter, gp_last_save, magnifier_visible
         frame = camera.read()
         if frame is None:
             return
@@ -1179,6 +1203,13 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
 
         overlay.update_view(result.cursor_xy, result.dwell_progress, result.state,
                             snap_grid.active)
+
+        # Update magnifier to follow gaze cursor
+        if magnifier_visible:
+            magnifier.update_cursor(result.cursor_xy)
+        elif magnifier.visible:
+            magnifier.update_cursor(None)
+
         panel.set_state(result.state)
 
         # Show dictation active indicator on overlay
@@ -1197,6 +1228,10 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             # Also close app switcher on pause
             if app_switcher.visible:
                 app_switcher.close()
+            # Also close magnifier on pause
+            if magnifier_visible:
+                magnifier_visible = False
+                magnifier.hide()
 
         if profile.pointer_control_enabled and result.cursor_xy is not None and result.state != State.IDLE:
             now = time.monotonic()

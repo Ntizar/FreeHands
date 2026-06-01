@@ -203,11 +203,21 @@ class GestureThreshold(BaseModel):
 class GazeModel(BaseModel):
     type: str = "ridge_regression"
     feature_version: int = 1
-    weights_x: list[float] = Field(default_factory=list)
+    # weights_x/y can be either flat (ridge: list[float]) or 2D (knn: list[list[float]])
+    weights_x: list[float] | list[list[float]] = Field(default_factory=list)
     weights_y: list[float] = Field(default_factory=list)
-    bias_x: float = 0.0
-    bias_y: float = 0.0
+    bias_x: list[float] | float = Field(default=0.0)
+    bias_y: float | int = 0
     personal_offset: dict[str, float] = Field(default_factory=lambda: {"x": 0.0, "y": 0.0})
+    # KNN-specific: instance-based storage (Deer Mouse pattern)
+    # training_features stores the X matrix (list of design vectors)
+    training_features: list[list[float]] = Field(default_factory=list)
+    # training_targets_x stores the y_x vector
+    training_targets_x: list[float] = Field(default_factory=list)
+    # training_targets_y stores the y_y vector
+    training_targets_y: list[float] = Field(default_factory=list)
+    # k stores the number of neighbours for KNN
+    k: int = 0
 
 
 class GPGazeModel(BaseModel):

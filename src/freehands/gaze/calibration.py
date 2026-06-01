@@ -11,6 +11,7 @@ import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
 from sklearn.linear_model import Ridge
+from sklearn.neighbors import KNeighborsRegressor
 
 from ..profiles import Profile
 from ..profiles.store import GPGazeModel, GazeModel
@@ -163,9 +164,41 @@ class GazeRegressor:
         self._feature_version = model.feature_version
         self._screen_w, self._screen_h = screen_size
         self._kalman = KalmanCursorFilter(kalman_params)
+        self._model_type = model.type
+
+        # KNN-specific fields
+        self._knn_x: KNeighborsRegressor | None = None
+        self._knn_y: KNeighborsRegressor | None = None
+        self._knn_k: int = getattr(model, 'k', 0) or KNN_DEFAULT_K
+        self._knn_weights: str = "distance"
+        self._knn_fitted = False
+        if self._model_type == "knn_regression":
+            self._build_knn_models()
+
+    def _build_knn_models(self) -> None:
+        """Build KNN regressors from stored training data."""
+        if self._model_type != "knn_regression":
+            return
+        # KNN models store training data in weights_x (X matrix),
+        # weights_y (y_x), bias_x (y_y), bias_y (k)
+        if self._wx is None or self._wy is None:
+            return
+        # _wx is a 2D array (X matrix), _wy is 1D (y_x), _bx is 1D (y_y)
+        X = np.array(self._wx)
+        yx = np.array(self._wy)
+        yy = np.array(self._bx)
+        k = self._knn_k if self._knn_k else KNN_DEFAULT_K
+        self._knn_k = k
+        self._knn_x = KNeighborsRegressor(n_neighbors=k, weights="distance")
+        self._knn_y = KNeighborsRegressor(n_neighbors=k, weights="distance")
+        self._knn_x.fit(X, yx)
+        self._knn_y.fit(X, yy)
+        self._knn_fitted = True
 
     @property
     def trained(self) -> bool:
+        if self._model_type == "knn_regression":
+            return self._knn_x is not None and self._knn_y is not None
         return self._wx is not None and self._wy is not None
 
     def _design_vector(self, features: np.ndarray) -> np.ndarray:
@@ -193,6 +226,8 @@ class GazeRegressor:
     def predict(self, features: np.ndarray) -> tuple[int, int] | None:
         if not self.trained:
             return None
+        if self._model_type == "knn_regression":
+            return self._predict_knn(features)
         design = self._design_vector(features)
         if design.shape[0] != self._wx.shape[0] or design.shape[0] != self._wy.shape[0]:
             return None
@@ -201,6 +236,19 @@ class GazeRegressor:
         x = max(0, min(self._screen_w - 1, x))
         y = max(0, min(self._screen_h - 1, y))
         # Kalman filter smoothing replaces the old EMA
+        smoothed = self._kalman.update((x, y))
+        return int(round(smoothed[0])), int(round(smoothed[1]))
+
+    def _predict_knn(self, features: np.ndarray) -> tuple[int, int] | None:
+        """Predict using KNN regressor."""
+        design = self._design_vector(features).reshape(1, -1)
+        try:
+            x = float(self._knn_x.predict(design)[0])
+            y = float(self._knn_y.predict(design)[0])
+        except Exception:
+            return None
+        x = max(0, min(self._screen_w - 1, x))
+        y = max(0, min(self._screen_h - 1, y))
         smoothed = self._kalman.update((x, y))
         return int(round(smoothed[0])), int(round(smoothed[1]))
 
@@ -233,6 +281,75 @@ def fit_gaze_model(samples: list[CalibrationSample], alpha: float = 0.5) -> Gaze
         weights_y=[float(v) for v in (ry.coef_ * gain_y)],
         bias_x=float(rx.intercept_ * gain_x + offset_x),
         bias_y=float(ry.intercept_ * gain_y + offset_y),
+    )
+
+
+# ── KNN gaze mapping (Deer Mouse pattern) ────────────────────────────────────
+
+# Default number of neighbours for KNN gaze mapping.
+# Lower values (3-5) are more responsive but noisier; higher values (7-11)
+# are smoother but may lag behind rapid eye movements.
+KNN_DEFAULT_K = 5
+
+# Minimum samples required for KNN — need at least k+1 samples.
+KNN_MIN_SAMPLES = 8
+
+
+def fit_knn_model(
+    samples: list[CalibrationSample],
+    n_neighbors: int = KNN_DEFAULT_K,
+    weights: str = "distance",
+) -> GazeModel:
+    """Train a K-Nearest Neighbours regressor and return a serialisable :class:`GazeModel`.
+
+    Uses the same design vectors as Ridge regression but learns a
+    non-parametric mapping from eye/head features to screen coordinates.
+    Inspired by Deer Mouse (jlopez) which showed KNN can outperform Ridge
+    when the gaze-to-screen mapping is highly non-linear.
+
+    Parameters
+    ----------
+    samples:
+        Calibration samples with feature vectors and target screen pixels.
+    n_neighbors:
+        Number of neighbours (k) for the KNN regressor.
+    weights:
+        Weight function — ``"distance"`` gives closer neighbours more
+        influence (recommended), ``"uniform"`` treats all neighbours equally.
+
+    Returns
+    -------
+    GazeModel
+        A serialisable model with type ``"knn_regression"``.  The weights
+        and bias fields are populated with the stored training data so the
+        model can be reconstituted for prediction later.
+    """
+    if len(samples) < KNN_MIN_SAMPLES:
+        raise ValueError(
+            f"Need at least {KNN_MIN_SAMPLES} calibration samples for KNN "
+            f"(got {len(samples)})"
+        )
+
+    X = np.stack([
+        build_gaze_design_vector(s.features, CURRENT_GAZE_FEATURE_VERSION)
+        for s in samples
+    ])
+    y = np.array([s.target_xy for s in samples])
+
+    knn_x = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights)
+    knn_y = KNeighborsRegressor(n_neighbors=n_neighbors, weights=weights)
+    knn_x.fit(X, y[:, 0])
+    knn_y.fit(X, y[:, 1])
+
+    # Store training data for prediction (KNN is instance-based)
+    # Data is stored in weights_x/y, bias_x/y so GazeRegressor can read it directly
+    return GazeModel(
+        type="knn_regression",
+        feature_version=CURRENT_GAZE_FEATURE_VERSION,
+        weights_x=X.tolist(),        # training features X (2D matrix)
+        weights_y=y[:, 0].tolist(),  # training targets y_x (1D vector)
+        bias_x=y[:, 1].tolist(),     # training targets y_y (1D vector)
+        bias_y=float(n_neighbors),   # k stored as float
     )
 
 

@@ -98,6 +98,9 @@ class GazeOverlay(QtWidgets.QWidget):
         self._snap_active = False
         self._dictation_active = False
         self._dictation_text: str = ""
+        # Language indicator (mejora #37)
+        self._lang_indicator_active = False
+        self._lang_indicator_text: str = ""
 
         self._flash_timer = QtCore.QTimer(self)
         self._flash_timer.setSingleShot(True)
@@ -220,6 +223,17 @@ class GazeOverlay(QtWidgets.QWidget):
         self._dictation_text = text
         self.update()
 
+    def set_language_indicator(self, active: bool, language: str = "") -> None:
+        """Set the detected language indicator (mejora #37).
+
+        Shows the detected language (e.g. \"Spanish\", \"English\") on the
+        overlay when voice typing is active and the language has been
+        auto-detected from the first transcription.
+        """
+        self._lang_indicator_active = active
+        self._lang_indicator_text = language
+        self.update()
+
     def _draw_state_badge(self, p: QtGui.QPainter) -> None:
         text = {
             State.IDLE: "PAUSED",
@@ -259,6 +273,19 @@ class GazeOverlay(QtWidgets.QWidget):
             p.setPen(QtGui.QColor(badge_color))
             p.setFont(font)
             p.drawText(badge_rect, QtCore.Qt.AlignmentFlag.AlignCenter, f"🎙 {badge_text}")
+
+        # Language indicator (mejora #37) — below dictation badge
+        if self._lang_indicator_active and self._lang_indicator_text:
+            lang_color = PALETTE.blue
+            bg3 = QtGui.QColor(255, 255, 255, 180)
+            p.setBrush(bg3)
+            p.setPen(QtGui.QPen(QtGui.QColor(lang_color), 1))
+            lang_rect = QtCore.QRect(self.width() - 170, 62, 150, 28)
+            p.drawRoundedRect(lang_rect, 14, 14)
+            p.setPen(QtGui.QColor(lang_color))
+            font_smaller = QtGui.QFont(font.family(), 8)
+            p.setFont(font_smaller)
+            p.drawText(lang_rect, QtCore.Qt.AlignmentFlag.AlignCenter, f"🌐 {self._lang_indicator_text}")
 
 
 class FreeHandsControlPanel(QtWidgets.QWidget):

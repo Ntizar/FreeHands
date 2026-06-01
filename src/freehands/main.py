@@ -38,6 +38,7 @@ from .ui.emoji_overlay import EmojiOverlayWidget
 from .ui.gaze_text_selector import GazeTextSelectorWidget
 from .ui.app_switcher import AppSwitcherWidget
 from .voice import VoiceListener, ContinuousDictationEngine, DictationConfig, DictationIntentDetector
+from .voice.continuous_dictation import WHISPER_LANGUAGES
 
 
 OPEN_PALM_HOLD_GESTURES = {"left_open_palm", "right_open_palm"}
@@ -498,6 +499,7 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
         language=profile.voice_language,
         backend=profile.voice_asr_backend,
         vosk_model_path=profile.voice_vosk_model_path or None,
+        voice_typing_mode=profile.voice_typing_mode,
         on_text=_on_dictated_text,
     )
     dictation_engine = ContinuousDictationEngine(dictation_config)
@@ -528,6 +530,9 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             return
         # Dictation commands are handled in tick() loop.
         if action in {"start_dictation", "stop_dictation"}:
+            return
+        # Voice typing commands (mejora #37) are handled in tick() loop.
+        if action in {"start_voice_typing", "stop_voice_typing"}:
             return
         # Magnifier toggle via voice ("zoom in" / "zoom out")
         if action in {"zoom_in", "zoom_out"}:
@@ -748,6 +753,47 @@ def run_system(user_id: str, voice_enabled: bool = True) -> int:
             overlay.flash_action("dictado: detenido")
             panel.set_last_action("dictado por voz desactivado")
             audio_feedback.play_voice_confirmation()
+
+        # ── Voice typing mode (mejora #37 — GestureMouseKeyControl) ────
+        # Full voice typing with 99+ language support via Whisper.
+        # "start typing" / "stop typing" (EN) + Spanish equivalents.
+        # In typing mode, the engine auto-detects the spoken language on
+        # first transcription and switches the ASR model to the detected
+        # language for better accuracy. The detected language is shown on
+        # the overlay as a persistent indicator.
+        typing_command = None
+        if voice_listener is not None:
+            for cmd_text in voice_actions_this_frame:
+                if cmd_text == "start_voice_typing":
+                    typing_command = "start"
+                elif cmd_text == "stop_voice_typing":
+                    typing_command = "stop"
+
+        if typing_command == "start" and dictation_engine is not None:
+            if not dictation_active:
+                # Reset language detection for new session
+                dictation_engine.detected_language = ""
+                dictation_engine.start()
+                dictation_active = True
+                overlay.flash_action("escritura por voz: activa")
+                panel.set_last_action("modo escritura por voz activado")
+                audio_feedback.play_voice_confirmation()
+        elif typing_command == "stop" and dictation_active:
+            if dictation_engine is not None:
+                dictation_engine.stop()
+            dictation_active = False
+            overlay.flash_action("escritura por voz: inactiva")
+            panel.set_last_action("modo escritura por voz desactivado")
+            audio_feedback.play_voice_confirmation()
+
+        # Show detected language indicator on overlay (mejora #37)
+        if dictation_active and dictation_engine is not None:
+            lang = dictation_engine.detected_language
+            if lang:
+                lang_name = WHISPER_LANGUAGES.get(lang, lang)
+                overlay.set_language_indicator(True, lang_name)
+            else:
+                overlay.set_language_indicator(False)
 
         # ── Multimodal dictation: gaze at text + voice trigger ────────────
         # When the user gazes at a detected text region for 500ms (ready),

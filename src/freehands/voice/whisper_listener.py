@@ -24,6 +24,28 @@ class VoiceCommand:
 WAKE_WORDS = ("freehands", "free hands", "ntizar")
 
 COMMAND_PHRASES: dict[str, tuple[str, ...]] = {
+    # ── Voice typing mode (mejora #37 — GestureMouseKeyControl) ──────
+    # MUST come BEFORE resume/escape because phrases like
+    # "start writing" contain "start" (resume) and
+    # "empezar a escribir" contains "esc" (escape).
+    "stop_voice_typing": (
+        "parar escribir",
+        "parar escritura",
+        "dejar de escribir",
+        "terminar escribir",
+        "stop writing",
+        "stop dictation mode",
+    ),
+    "start_voice_typing": (
+        "empezar a escribir",
+        "empieza a escribir",
+        "empezar escritura",
+        "empieza escritura",
+        "start writing",
+        "start dictation mode",
+        "empezar a dictar",
+        "dictar texto",
+    ),
     "double_click": ("double click", "doble click", "doble clic"),
     "right_click": ("right click", "context menu", "click derecho", "clic derecho", "boton derecho", "menu contextual"),
     "zoom_in": ("zoom in", "zoom mas", "acercar", "ampliar", "aumentar"),
@@ -31,8 +53,8 @@ COMMAND_PHRASES: dict[str, tuple[str, ...]] = {
     "scroll_up": ("scroll up", "page up", "scroll arriba", "desplaza arriba", "sube"),
     "scroll_down": ("scroll down", "page down", "scroll abajo", "desplaza abajo", "baja"),
     "toggle_pause": ("pause", "stop", "pausa", "pausar", "detente"),
-    "resume": ("resume", "continue", "start", "activate", "reanudar", "continua", "continuar", "activar", "despausar"),
-    "escape": ("escape", "esc", "cancel", "back", "cancelar", "cancela", "atras"),
+    "resume": ("resume", "continue", "activate", "reanudar", "continua", "continuar", "activar", "despausar"),
+    "escape": ("escape", "cancel", "back", "cancelar", "cancela", "atras"),
     "click": ("click", "select", "clic", "pincha", "selecciona", "seleccionar"),
     # ── System commands (voice-only, no wake word needed — safety controls) ──
     "show_desktop": ("show desktop", "mostrar escritorio", "escritorio", "minimizar todo", "minimiza todo"),

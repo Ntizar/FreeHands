@@ -33,7 +33,120 @@ from typing import Callable
 import numpy as np
 
 
-# ── Punctuation keywords (ES + EN) ────────────────────────────────
+# ── Whisper supported languages (98 languages, Whisper tiny-base) ──
+# https://github.com/openai/whisper/blob/main/whisper/tokenizer.py
+WHISPER_LANGUAGES: dict[str, str] = {
+    # European
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "nl": "Dutch",
+    "uk": "Ukrainian",
+    "pl": "Polish",
+    "ro": "Romanian",
+    "el": "Greek",
+    "hu": "Hungarian",
+    "cs": "Czech",
+    "sk": "Slovak",
+    "bg": "Bulgarian",
+    "hr": "Croatian",
+    "sr": "Serbian",
+    "sl": "Slovenian",
+    "da": "Danish",
+    "fi": "Finnish",
+    "sv": "Swedish",
+    "no": "Norwegian",
+    "tr": "Turkish",
+    "he": "Hebrew",
+    "is": "Icelandic",
+    "et": "Estonian",
+    "lv": "Latvian",
+    "lt": "Lithuanian",
+    "ca": "Catalan",
+    "gl": "Galician",
+    "eu": "Basque",
+    "ga": "Irish",
+    "mt": "Maltese",
+    "cy": "Welsh",
+    "mk": "Macedonian",
+    "sq": "Albanian",
+    "bs": "Bosnian",
+    "af": "Afrikaans",
+    # Middle Eastern / South Asian
+    "ar": "Arabic",
+    "fa": "Persian (Farsi)",
+    "ur": "Urdu",
+    "hi": "Hindi",
+    "bn": "Bengali",
+    "pa": "Punjabi",
+    "gu": "Gujarati",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "mr": "Marathi",
+    "ne": "Nepali",
+    "si": "Sinhala",
+    "my": "Burmese",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "id": "Indonesian",
+    "ms": "Malay",
+    "tl": "Filipino",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese",
+    # African
+    "sw": "Swahili",
+    "zu": "Zulu",
+    "am": "Amharic",
+    "ha": "Hausa",
+    "yo": "Yoruba",
+    "ig": "Igbo",
+    "so": "Somali",
+    "mg": "Malagasy",
+    "ny": "Chichewa",
+    "rw": "Kinyarwanda",
+    "sn": "Shona",
+    "mn": "Mongolian",
+    "ka": "Georgian",
+    "hy": "Armenian",
+    "az": "Azerbaijani",
+    "kk": "Kazakh",
+    "ky": "Kyrgyz",
+    "tg": "Tajik",
+    "tk": "Turkmen",
+    "uz": "Uzbek",
+    # Southeast Asian / Pacific
+    "jw": "Javanese",
+    "su": "Sundanese",
+    "haw": "Hawaiian",
+    "mi": "Maori",
+    # Other
+    "la": "Latin",
+    "lb": "Luxembourgish",
+    "oc": "Occitan",
+    "sa": "Sanskrit",
+    "sd": "Sindhi",
+    "ps": "Pashto",
+    "po": "Polish",
+    "tt": "Tatar",
+    "yi": "Yiddish",
+    "bo": "Tibetan",
+    "as": "Assamese",
+    "be": "Belarusian",
+    "lo": "Lao",
+    "km": "Khmer",
+    "fo": "Faroese",
+    "ht": "Haitian Creole",
+    "sa": "Sanskrit",
+}
+
+# ── Punctuation keywords (ES + EN) ─────────────────────────────────
 PUNCT_MAP: dict[str, str] = {
     # Spanish
     "coma": ",",
@@ -125,6 +238,10 @@ class DictationConfig:
     auto_punctuation: bool = True
     sentence_end_threshold: float = 0.5  # confidence threshold for sentence-ending
 
+    # Voice typing mode (mejora #37)
+    voice_typing_mode: bool = True  # True = full typing mode with language detection
+    detected_language: str = ""  # Auto-detected language from first transcription
+
     # Callback
     on_text: Callable[[str], None] | None = None  # called with committed text
 
@@ -159,6 +276,7 @@ class ContinuousDictationEngine:
         # Stats
         self.total_chars_committed: int = 0
         self.dictation_sessions: int = 0
+        self.detected_language: str = ""  # Auto-detected from first transcription
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -298,6 +416,14 @@ class ContinuousDictationEngine:
             try:
                 segments, info = model.transcribe(audio, **transcribe_kwargs)
                 text = " ".join(seg.text.strip() for seg in segments).strip()
+                # Auto-detect language on first transcription (mejora #37)
+                if (self.config.voice_typing_mode
+                        and not self.detected_language
+                        and hasattr(info, 'language')
+                        and info.language):
+                    self.detected_language = info.language
+                    lang_name = WHISPER_LANGUAGES.get(info.language, info.language)
+                    print(f"[dictation] idioma detectado: {lang_name} ({info.language})")
             except Exception:
                 continue
 

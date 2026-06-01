@@ -286,3 +286,101 @@ def test_max_buffer_length_forces_commit() -> None:
     engine._flush_buffer()
     assert len(received) > 0
     assert engine.buffer_text == ""
+
+
+# ── Voice typing mode (mejora #37) ──────────────────────────────────
+
+
+def test_dictation_config_voice_typing_mode_default() -> None:
+    config = DictationConfig()
+    assert config.voice_typing_mode is True
+    assert config.detected_language == ""
+
+
+def test_dictation_config_voice_typing_mode_disabled() -> None:
+    config = DictationConfig(voice_typing_mode=False)
+    assert config.voice_typing_mode is False
+
+
+def test_engine_detected_language_default() -> None:
+    engine = ContinuousDictationEngine()
+    assert engine.detected_language == ""
+
+
+def test_engine_detected_language_set() -> None:
+    engine = ContinuousDictationEngine()
+    engine.detected_language = "es"
+    assert engine.detected_language == "es"
+
+
+def test_whisper_languages_count() -> None:
+    from freehands.voice.continuous_dictation import WHISPER_LANGUAGES
+    # Should have 98+ languages
+    assert len(WHISPER_LANGUAGES) >= 90
+    # Key languages present
+    assert "en" in WHISPER_LANGUAGES
+    assert "es" in WHISPER_LANGUAGES
+    assert "fr" in WHISPER_LANGUAGES
+    assert "de" in WHISPER_LANGUAGES
+    assert "ja" in WHISPER_LANGUAGES
+    assert "zh" in WHISPER_LANGUAGES
+    assert "ar" in WHISPER_LANGUAGES
+    assert "hi" in WHISPER_LANGUAGES
+
+
+def test_whisper_languages_have_display_names() -> None:
+    from freehands.voice.continuous_dictation import WHISPER_LANGUAGES
+    for code, name in WHISPER_LANGUAGES.items():
+        assert isinstance(code, str) and len(code) >= 2
+        assert isinstance(name, str) and len(name) > 0
+
+
+# ── Voice typing commands ───────────────────────────────────────────
+
+
+def test_voice_typing_commands_exist() -> None:
+    from freehands.voice.whisper_listener import COMMAND_PHRASES
+    assert "start_voice_typing" in COMMAND_PHRASES
+    assert "stop_voice_typing" in COMMAND_PHRASES
+
+
+def test_voice_typing_spanish_phrases() -> None:
+    from freehands.voice.whisper_listener import COMMAND_PHRASES
+    start = COMMAND_PHRASES["start_voice_typing"]
+    assert "empezar a escribir" in start
+    assert "empieza a escribir" in start
+    assert "empezar escritura" in start
+    stop = COMMAND_PHRASES["stop_voice_typing"]
+    assert "parar escribir" in stop
+    assert "dejar de escribir" in stop
+    assert "terminar escribir" in stop
+
+
+def test_voice_typing_english_phrases() -> None:
+    from freehands.voice.whisper_listener import COMMAND_PHRASES
+    start = COMMAND_PHRASES["start_voice_typing"]
+    assert "start writing" in start
+    assert "start dictation mode" in start
+    stop = COMMAND_PHRASES["stop_voice_typing"]
+    assert "stop writing" in stop
+    assert "stop dictation mode" in stop
+
+
+def test_voice_typing_commands_require_wake_word() -> None:
+    from freehands.voice import parse_voice_command
+    # Without wake word — should not match (not a safety command)
+    assert parse_voice_command("start writing", require_wake_word=True) is None
+    # With wake word — should match
+    assert parse_voice_command("FreeHands start writing") == "start_voice_typing"
+    assert parse_voice_command("FreeHands empezar a escribir") == "start_voice_typing"
+    # Stop typing
+    assert parse_voice_command("FreeHands stop writing") == "stop_voice_typing"
+    assert parse_voice_command("FreeHands parar escribir") == "stop_voice_typing"
+
+
+def test_voice_typing_commands_spanish() -> None:
+    from freehands.voice import parse_voice_command
+    assert parse_voice_command("FreeHands empezar a escribir") == "start_voice_typing"
+    assert parse_voice_command("FreeHands empezar escritura") == "start_voice_typing"
+    assert parse_voice_command("FreeHands parar escribir") == "stop_voice_typing"
+    assert parse_voice_command("FreeHands dejar de escribir") == "stop_voice_typing"

@@ -342,6 +342,7 @@ class Profile(BaseModel):
     voice_wake_words: list[str] = Field(default_factory=lambda: ["freehands", "free hands", "ntizar"])
     voice_vosk_model_path: str = ""
     voice_model_size: str = "tiny"
+    voice_typing_mode: bool = True  # Voice typing mode (mejora #37)
     audio_feedback_enabled: bool = True
     magnification_enabled: bool = True
     magnification_factor: float = 2.0
